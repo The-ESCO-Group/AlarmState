@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALARM STATE — Prairie Gold Processing</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23141a20'/%3E%3Ccircle cx='8' cy='8' r='5' fill='%23e8a020'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+</head>
+<body>
+
+<div id="app"></div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="crosshair">+</div>
+
+  <div id="hud-topleft">
+    <div class="hud-box">
+      <div class="hud-line"><span class="hud-label">TECH</span> <span id="hud-player">T. RYDER</span></div>
+      <div class="hud-line"><span class="hud-label">SHIFT</span> <span id="hud-shift">00:00</span></div>
+      <div class="hud-line"><span class="hud-label">SCORE</span> <span id="hud-score">0</span></div>
+      <div class="hud-line"><span class="hud-label">STREAK</span> <span id="hud-streak">x1.0</span></div>
+      <div class="hud-line"><span class="hud-label">STRIKES</span> <span id="hud-strikes">○○○</span></div>
+    </div>
+  </div>
+
+  <div id="hud-alarm" class="hidden">
+    <div id="hud-alarm-tier">⚠ WARNING</div>
+    <div id="hud-alarm-text">TAH-2210 DT TRAY 4 TEMP HIGH</div>
+    <div id="hud-alarm-timer">02:00 TO ESCALATION</div>
+  </div>
+
+  <div id="hud-objective"></div>
+
+  <div id="hud-subtitles"></div>
+
+  <div id="hud-interact" class="hidden">[E] Use HMI Terminal</div>
+
+  <div id="hud-keys">
+    <span><b>WASD</b> Move</span><span><b>SHIFT</b> Run</span><span><b>E</b> Interact</span>
+    <span><b>R</b> Radio</span><span><b>ENTER</b> Solve Problem</span><span><b>M</b> Map</span><span><b>ESC</b> Menu</span>
+  </div>
+
+  <div id="hud-solve-hint">⏎ SOLVE PROBLEM</div>
+  <div id="hud-compass"><span id="compass-tape"></span></div>
+</div>
+
+<!-- ============ MAIN MENU ============ -->
+<div id="menu" class="overlay">
+  <div id="menu-inner">
+    <div id="menu-logo">
+      <div class="logo-co">PRAIRIE GOLD PROCESSING</div>
+      <div class="logo-title">ALARM&nbsp;STATE</div>
+      <div class="logo-sub">SOYBEAN EXTRACTION &amp; REFINING · MAPLE JUNCTION, IOWA · PLANT 7</div>
+    </div>
+    <div id="menu-buttons">
+      <div class="menu-section-label">SELECT SHIFT DIFFICULTY</div>
+      <button class="menu-btn diff-btn" data-diff="easy">DAY SHIFT <span class="diff-desc">— Easy · helpful crew, clear clues</span></button>
+      <button class="menu-btn diff-btn selected" data-diff="normal">SWING SHIFT <span class="diff-desc">— Normal · some bad info on the radio</span></button>
+      <button class="menu-btn diff-btn" data-diff="hard">GRAVEYARD <span class="diff-desc">— Hard · skeleton crew, liars, attitude</span></button>
+      <button class="menu-btn" id="btn-start">▶ CLOCK IN</button>
+      <button class="menu-btn" id="btn-howto">HOW TO PLAY</button>
+    </div>
+    <div id="menu-scores">
+      <div class="menu-section-label">HIGH SCORES</div>
+      <div id="hs-rows"></div>
+    </div>
+    <div id="menu-foot">v1.0 · WebGL required · Audio on for radio &amp; alarm horns · Click CLOCK IN, then click the screen to capture the mouse</div>
+  </div>
+</div>
+
+<!-- ============ HOW TO PLAY ============ -->
+<div id="howto" class="overlay hidden">
+  <div class="panel-window" style="max-width:860px">
+    <div class="panel-titlebar"><span>NEW TECHNICIAN ORIENTATION — PGP PLANT 7</span><button class="win-btn" data-close="howto">✕</button></div>
+    <div class="panel-body" id="howto-body">
+      <h3>Your job</h3>
+      <p>You are the on-shift I&amp;C technician. When an alarm comes in, find the <b>root cause</b> and identify it by the <b>tagname of the I/O point</b> that is causing the problem (e.g. <code>TCV-2208</code>). Type it into the <b>SOLVE PROBLEM</b> box (ENTER key) before the plant shuts down.</p>
+      <h3>Alarm escalation — 2 minutes per tier</h3>
+      <p><span class="tier-chip warn">TIER 1 — WARNING</span> → <span class="tier-chip crit">TIER 2 — CRITICAL</span> → <span class="tier-chip shut">TIER 3 — PLANT SHUTDOWN</span></p>
+      <p>Solve in Tier 1 for maximum points. A shutdown is a <b>strike</b> — three strikes and corporate ends your shift. During a shutdown you have 2 more minutes to identify the cause for partial credit before the round is lost.</p>
+      <h3>Your tools</h3>
+      <ul>
+        <li><b>HMI terminals (E)</b> — FactoryTalk-style operator screens in the control room and at field panels. Live process values, equipment status, alarm summary and trends. The HMI jumps straight to the screen for the active alarm.</li>
+        <li><b>Engineering workstation (E)</b> — the development node in the control room. Opens the ladder logic <i>for the routine that generated the alarm</i> so you aren't digging through the whole program. Click any tagname to cross-reference it.</li>
+        <li><b>Radio (R)</b> — key up and ask operators and supervisors questions. They answer based on what they can see. Some of them are wrong. Some of them are jerks. On GRAVEYARD, at least one of them is actively feeding you garbage.</li>
+        <li><b>Walk the plant (WASD)</b> — listen for steam leaks, look for stopped motors, beacons, and leaks. The plant itself is a clue.</li>
+      </ul>
+      <h3>Scoring</h3>
+      <ul>
+        <li>Solve in WARNING: 1000 pts + time bonus · CRITICAL: 600 + time bonus · during SHUTDOWN: 200</li>
+        <li>Wrong guess: −100 pts (and the supervisor will hear about it)</li>
+        <li>Difficulty multiplier: Day x1 · Swing x1.5 · Graveyard x2 · Streak bonus up to +50%</li>
+      </ul>
+      <h3>Reading tags</h3>
+      <p>ISA style: first letter = variable (T temp, P pressure, L level, F flow, A analytic, I current, S speed, Z position), then modifiers (T transmitter, CV control valve, SH/SL switch high/low). Number = area: 11xx prep, 22xx extraction, 33xx refinery, 41xx boiler, 42xx cooling, 51xx meal.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HMI OVERLAY (FactoryTalk style) ============ -->
+<div id="hmi" class="overlay hidden">
+  <div id="hmi-frame">
+    <div id="hmi-titlebar">
+      <span id="hmi-title-icon">▣</span>
+      <span id="hmi-title-text">FactoryTalk View SE Client — PGP_PLANT7 — [OVERVIEW]</span>
+      <button class="win-btn" data-close="hmi">✕</button>
+    </div>
+    <div id="hmi-alarmbanner">
+      <div id="hmi-ab-rows"></div>
+      <div id="hmi-ab-buttons">
+        <button class="ft-btn" id="hmi-ack">ACK</button>
+        <button class="ft-btn" id="hmi-ackall">ACK ALL</button>
+        <button class="ft-btn" data-hmiscreen="ALARMS">SUMMARY</button>
+      </div>
+    </div>
+    <div id="hmi-screen"></div>
+    <div id="hmi-nav">
+      <button class="ft-btn nav-btn" data-hmiscreen="OVERVIEW">OVERVIEW</button>
+      <button class="ft-btn nav-btn" data-hmiscreen="PREP">PREP</button>
+      <button class="ft-btn nav-btn" data-hmiscreen="EXTRACTION">EXTRACTION</button>
+      <button class="ft-btn nav-btn" data-hmiscreen="REFINERY">REFINERY</button>
+      <button class="ft-btn nav-btn" data-hmiscreen="UTILITIES">UTILITIES</button>
+      <button class="ft-btn nav-btn" data-hmiscreen="MEAL">MEAL/LOADOUT</button>
+      <button class="ft-btn nav-btn" data-hmiscreen="ALARMS">ALARM SUMMARY</button>
+      <button class="ft-btn nav-btn" data-hmiscreen="TREND">TREND</button>
+      <div id="hmi-clock">00:00:00</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ LADDER LOGIC OVERLAY (Studio 5000 style) ============ -->
+<div id="ladder" class="overlay hidden">
+  <div id="ld-frame">
+    <div id="ld-titlebar">
+      <span>Logix Designer — PGP_Plant7_PLC [1756-L85E] — Online ● RUN</span>
+      <button class="win-btn" data-close="ladder">✕</button>
+    </div>
+    <div id="ld-toolbar">
+      <span class="ld-mode">● Online</span><span class="ld-run">RUN</span>
+      <span class="ld-path">Path: AB_ETH-1\192.168.7.10\Backplane\0</span>
+      <span id="ld-xref-banner" class="hidden"></span>
+    </div>
+    <div id="ld-main">
+      <div id="ld-tree">
+        <div class="ld-tree-head">Controller Organizer</div>
+        <div id="ld-tree-body"></div>
+      </div>
+      <div id="ld-rungs-wrap">
+        <div id="ld-routine-tab"></div>
+        <div id="ld-rungs"></div>
+      </div>
+    </div>
+    <div id="ld-status">For help, press F1 — but help isn’t coming.</div>
+  </div>
+</div>
+
+<!-- ============ RADIO OVERLAY ============ -->
+<div id="radio" class="overlay-light hidden">
+  <div id="radio-frame">
+    <div id="radio-head">
+      <span>📻 MOTOROLA XPR — CH 2 «PLANT OPS» — PTT</span>
+      <button class="win-btn" data-close="radio">✕</button>
+    </div>
+    <div id="radio-log"></div>
+    <div id="radio-ask">
+      <div class="radio-ask-label">KEY UP — TRANSMIT TO:</div>
+      <div id="radio-channels"></div>
+      <div class="radio-ask-label">MESSAGE:</div>
+      <div id="radio-questions"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SOLVE PROBLEM ============ -->
+<div id="solve" class="overlay-light hidden">
+  <div id="solve-frame">
+    <div id="solve-head"><span>⚒ SOLVE PROBLEM — IDENTIFY ROOT CAUSE I/O POINT</span><button class="win-btn" data-close="solve">✕</button></div>
+    <div id="solve-body">
+      <div id="solve-prompt">Enter the tagname of the I/O point causing the issue:</div>
+      <input id="solve-input" type="text" placeholder="e.g. TCV-2208" autocomplete="off" spellcheck="false">
+      <div id="solve-feedback"></div>
+      <div id="solve-buttons"><button class="ft-btn" id="solve-submit">SUBMIT TO SUPERVISOR</button></div>
+      <div id="solve-note">Wrong answers cost 100 points and a chewing-out. Format: letters-numbers, e.g. TT-2210, FCV-4112, M-3225.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MAP ============ -->
+<div id="map" class="overlay-light hidden">
+  <div id="map-frame">
+    <div id="map-head"><span>PLANT 7 — PLOT PLAN</span><button class="win-btn" data-close="map">✕</button></div>
+    <canvas id="map-canvas" width="700" height="520"></canvas>
+  </div>
+</div>
+
+<!-- ============ ROUND RESULT / GAME OVER ============ -->
+<div id="result" class="overlay hidden">
+  <div class="panel-window" style="max-width:680px">
+    <div class="panel-titlebar"><span id="result-title">ROUND COMPLETE</span></div>
+    <div class="panel-body" id="result-body"></div>
+    <div class="panel-foot"><button class="menu-btn" id="result-continue">CONTINUE</button></div>
+  </div>
+</div>
+
+<!-- ============ PAUSE ============ -->
+<div id="pause" class="overlay hidden">
+  <div class="panel-window" style="max-width:480px">
+    <div class="panel-titlebar"><span>SHIFT PAUSED</span></div>
+    <div class="panel-body" style="text-align:center">
+      <button class="menu-btn" id="btn-resume">RESUME SHIFT</button>
+      <button class="menu-btn" id="btn-howto2">HOW TO PLAY</button>
+      <label id="voice-toggle-row"><input type="checkbox" id="voice-toggle" checked> Radio voices (speech synthesis)</label>
+      <button class="menu-btn" id="btn-quit">CLOCK OUT (END SHIFT)</button>
+    </div>
+  </div>
+</div>
+
+<div id="flash-overlay"></div>
+<div id="toast"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
