@@ -1,18 +1,42 @@
 // ============================================================================
 // Game director — round state machine, alarm tiers, scoring, radio scripting
 // ============================================================================
-import { SCENARIOS, NPCS, WRONG_GUESS_LINES, SHUTDOWN_LINES, WIN_LINES } from './data/scenarios.js';
+import { SCENARIOS, NPCS, WRONG_GUESS_LINES, SHUTDOWN_LINES, WIN_LINES } from './data/scenarios.js?v=20260716a';
 import { normTag } from './data/tags.js';
-import { audio } from './audio.js';
+import { audio } from './audio.js?v=20260715d';
 
-const TIER_SECONDS = 120;          // per spec: each tier lasts 2 minutes
+const TIER_SECONDS = { easy: 95, normal: 75, hard: 55 };
 const DIFF_MULT = { easy: 1, normal: 1.5, hard: 2 };
 const IDLE_LINES = [
-  ['marcy', 'Quiet shift so far. I don’t trust it.'],
-  ['pete',  'Anybody want anything from the vending machine? It took my dollar again but I believe in second chances.'],
-  ['goose', 'You ever notice they never let US pick the radio station in the control room? Think about it.'],
-  ['dale',  'Whoever keeps parkin’ the scissor lift in front of my lockers is gonna find it in the dike.'],
-  ['rhonda','Deodorizer smells like french fries again. I will not be taking questions.'],
+  ['marcy', 'Control room is holding steady. Use the silence to get ahead. It will not last.'],
+  ['dale',  'Extraction is already behind rate. If your controls add one more delay, you own the number.'],
+  ['rhonda','Refinery is on specification by inches. Nobody touches a loop without evidence.'],
+  ['frank', 'If you are waiting for an alarm before opening the trends, you are already late.'],
+  ['voss',  'Every idle minute is paid preparation time. I expect the next response to be immediate.'],
+];
+
+const MANAGER_PRESSURE_LINES = {
+  1: [
+    ['frank', 'The warning clock is running. I want the failed point, the evidence, and no unsupported guess. Move.'],
+    ['voss', 'Ryder, this unit is losing rate while you investigate. You have one job: isolate the first failed point before escalation.'],
+    ['frank', 'Do not narrate the problem to me. Compare command, feedback, and process response, then submit the tag.'],
+  ],
+  2: [
+    ['voss', 'Critical means your troubleshooting window is almost gone. If the interlock acts first, the shutdown belongs to your record.'],
+    ['frank', 'The panel is filling and production is watching. Stop circling the symptom and find the initiating failure now.'],
+    ['voss', 'I do not need another update. I need one defensible I/O point before this unit trips.'],
+  ],
+  3: [
+    ['voss', 'The plant is down. Your remaining time is for the incident record, not redemption. Identify the failed point.'],
+    ['frank', 'Production is stopped and the restart meeting has already started. Give me the cause before the grace clock expires.'],
+    ['voss', 'You missed containment. Do not miss the cause. One tag, backed by evidence, now.'],
+  ],
+};
+
+const CONTAINMENT_PRESSURE_LINES = [
+  ['voss', 'LEL is rising. Nobody enters the hot zone. Isolate from the safe side and prove the initiating failure. One shortcut ends your qualification.'],
+  ['frank', 'Do not trade personnel safety for rate. Use the HMI, containment evidence, and field reports from outside the boundary.'],
+  ['voss', 'The extraction boundary stays controlled. Give me the failed containment point without exposing another person.'],
 ];
 
 export class Game {
@@ -21,7 +45,7 @@ export class Game {
     this.effects = effects;
     this.radio = radio;
 
-    this.state = 'menu';        // menu | idle | active | resolved | gameover
+    this.state = 'menu';        // menu | campaign | idle | active | resolved | gameover
     this.difficulty = 'normal';
     this.score = 0;
     this.streak = 0;
@@ -40,22 +64,124 @@ export class Game {
     this.chatterQueue = [];     // [{at, who, text}]
     this.onRoundEnd = null;     // callback(resultHTML, isGameOver)
     this.onToast = null;
+    this.onScenarioSolved = null;
+    this.scenarioFilter = null;
+    this.courseMissionId = null;
+    this.lastRoundPassed = null;
+    this.managerPressureIndex = 0;
+    this.nextManagerPressure = 24;
+    this.multiplayer = false;
+    this.multiplayerPhase = null;
+    this._multiplayerLiveScenario = null;
   }
 
-  startShift(difficulty) {
+  enterMultiplayer() {
+    this.multiplayer = true;
+    this.multiplayerPhase = 'lobby';
+    this.state = 'multiplayer';
+    this.score = 0;
+    this.streak = 0;
+    this.strikes = 0;
+    this.roundsSolved = 0;
+    this.shiftT = 0;
+    this.roundT = 0;
+    this.tier = 0;
+    this.activeScenario = null;
+    this._multiplayerLiveScenario = null;
+    audio.setAlarmTier(0);
+    this.effects.setBeacon(null, 0);
+    this.effects.stopScenarioEffects();
+    this.sim.clearScenario();
+  }
+
+  leaveMultiplayer() {
+    this.multiplayer = false;
+    this.multiplayerPhase = null;
+    this._multiplayerLiveScenario = null;
+    this.enterCampaign(false);
+  }
+
+  applyMultiplayerState(snapshot) {
+    if (!this.multiplayer) this.enterMultiplayer();
+    const scenario = SCENARIOS.find((entry) => entry.id === snapshot.scenarioId) || null;
+    const previousTier = this.tier;
+    this.multiplayerPhase = snapshot.phase;
+    this.score = snapshot.score;
+    this.strikes = snapshot.strikes;
+    this.roundsSolved = snapshot.roundsSolved;
+    this.shiftT = snapshot.shiftElapsed || 0;
+    this.roundT = snapshot.elapsed || 0;
+    this.tier = snapshot.tier || 0;
+    this._multiplayerTierLeft = snapshot.tierLeft || 0;
+    this.alarmAcked = !!snapshot.alarmAcked;
+    this.activeScenario = snapshot.phase === 'active' ? scenario : null;
+    this.state = snapshot.phase === 'active' ? 'active' : snapshot.phase === 'gameover' ? 'gameover' : 'multiplayer';
+
+    if (snapshot.phase === 'active' && scenario && this._multiplayerLiveScenario !== scenario.id) {
+      this._multiplayerLiveScenario = scenario.id;
+      this.alarmStartWall = new Date();
+      this.sim.startScenario(scenario.overrides);
+      this.effects.startScenarioEffects(scenario.effects);
+      this.effects.setBeacon(scenario.area, 1);
+      this.radio.resetRound();
+      this.radio.sysLog(`CREW ALARM ${scenario.alarm.name} - ${scenario.alarm.text}`);
+    }
+    if (snapshot.phase === 'active' && scenario && previousTier !== this.tier) {
+      audio.setAlarmTier(this.tier);
+      this.effects.setBeacon(scenario.area, this.tier);
+      if (this.tier >= 3) {
+        this.sim.shutdown();
+        audio.setPlantRunning(false);
+        this.effects.setPlantRunning(false);
+      }
+    }
+    if (snapshot.phase !== 'active' && this._multiplayerLiveScenario) {
+      audio.setAlarmTier(0);
+      this.effects.setBeacon(null, 0);
+      this.effects.stopScenarioEffects();
+      this.sim.clearScenario();
+      if (!this.sim.running) {
+        this.sim.restart();
+        audio.setPlantRunning(true);
+        this.effects.setPlantRunning(true);
+      }
+      this._multiplayerLiveScenario = null;
+    }
+  }
+
+  enterCampaign(resetClock = false) {
+    this.state = 'campaign';
+    this.tier = 0;
+    this.activeScenario = null;
+    this.scenarioFilter = null;
+    this.courseMissionId = null;
+    this.lastRoundPassed = null;
+    if (resetClock) this.shiftT = 0;
+    audio.setAlarmTier(0);
+    this.effects.setBeacon(null, 0);
+    this.effects.stopScenarioEffects();
+    this.sim.clearScenario();
+  }
+
+  startShift(difficulty, options = {}) {
     this.difficulty = difficulty;
+    this.scenarioFilter = Array.isArray(options.scenarioIds) ? [...options.scenarioIds] : null;
+    this.courseMissionId = options.courseMissionId || null;
+    this.lastRoundPassed = null;
     this.state = 'idle';
     this.score = 0; this.streak = 0; this.strikes = 0; this.roundsSolved = 0;
     this.shiftT = 0;
     this.pool = [];
     this.idleTimer = 0;
-    this.scheduleNextRound(8 + Math.random() * 10);
+    this.scheduleNextRound(this.courseMissionId ? 2.5 : 8 + Math.random() * 10);
     this.radio.sysLog(`Shift start — ${difficulty.toUpperCase()} — radio check OK`);
-    this.radio.say('frank', this.difficulty === 'easy'
-      ? 'Alright tech, day shift. Crew’s in a good mood, plant’s humming. Don’t ruin it.'
-      : this.difficulty === 'hard'
-        ? 'Graveyard shift. Skeleton crew, half of ’em useless, the other half asleep. Anything breaks, it’s on YOU. No pressure.'
-        : 'Swing shift. I want quick answers and quiet radios. Don’t make me come find you.');
+    if (!this.courseMissionId) {
+      this.radio.say('frank', this.difficulty === 'easy'
+        ? 'Day shift. Full staffing means there is no excuse for a slow diagnosis. Keep the plant online.'
+        : this.difficulty === 'hard'
+          ? 'Graveyard. Skeleton crew, no senior backup, and no tolerance for a shutdown. Every failure is yours until proven otherwise.'
+          : 'Swing shift. Production is behind plan. I want fast evidence, one root cause, and no wasted radio traffic.');
+    }
   }
 
   scheduleNextRound(delay) {
@@ -63,7 +189,12 @@ export class Game {
   }
 
   pickScenario() {
-    if (this.pool.length === 0) this.pool = [...SCENARIOS].sort(() => Math.random() - 0.5);
+    if (this.pool.length === 0) {
+      const allowed = this.scenarioFilter?.length
+        ? SCENARIOS.filter((scenario) => this.scenarioFilter.includes(scenario.id))
+        : SCENARIOS;
+      this.pool = [...(allowed.length ? allowed : SCENARIOS)].sort(() => Math.random() - 0.5);
+    }
     return this.pool.pop();
   }
 
@@ -75,6 +206,9 @@ export class Game {
     this.tier = 1;
     this.alarmAcked = false;
     this.wrongGuesses = 0;
+    this.lastRoundPassed = null;
+    this.managerPressureIndex = 0;
+    this.nextManagerPressure = 24;
     this.alarmStartWall = new Date();
     this.radio.resetRound();
 
@@ -90,18 +224,17 @@ export class Game {
     }).map(c => ({ ...c }));
 
     this.radio.sysLog(`⚠ ALARM ${sc.alarm.name} — ${sc.alarm.text}`);
-    this.toast(`⚠ WARNING — ${sc.alarm.name}: ${sc.alarm.text}`);
-    document.getElementById('hud-objective').innerHTML =
-      `<b>ACTIVE ALARM:</b> ${sc.alarm.name} ${sc.alarm.text}<br>` +
-      `Find the root-cause I/O point and submit it (ENTER). HMI and ladder have auto-navigated to the affected system.`;
   }
 
   toast(msg) { if (this.onToast) this.onToast(msg); }
 
   // ------------------------------------------------------------------ tick
   tick(dt) {
+    if (this.multiplayer) return;
     if (this.state === 'menu' || this.state === 'gameover') return;
     this.shiftT += dt;
+
+    if (this.state === 'campaign') return;
 
     if (this.state === 'idle') {
       this.nextRoundIn -= dt;
@@ -127,18 +260,31 @@ export class Game {
       }
     }
 
+    if (this.roundT >= this.nextManagerPressure) {
+      const pressureLines = this.activeScenario?.id === 'EXT_HEXANE_LEL'
+        ? CONTAINMENT_PRESSURE_LINES
+        : MANAGER_PRESSURE_LINES[this.tier] || MANAGER_PRESSURE_LINES[2];
+      const [who, text] = pressureLines[this.managerPressureIndex % pressureLines.length];
+      this.managerPressureIndex += 1;
+      this.nextManagerPressure += this.tier === 1 ? 30 : this.tier === 2 ? 23 : 20;
+      this.radio.say(who, text);
+    }
+
     // tier escalation
-    if (this.tier === 1 && this.roundT >= TIER_SECONDS) {
+    const tierSeconds = this.tierSeconds();
+    if (this.tier === 1 && this.roundT >= tierSeconds) {
       this.tier = 2;
       audio.setAlarmTier(2);
       this.effects.setBeacon(this.activeScenario.area, 2);
       this.alarmAcked = false;
-      this.toast(`🔴 CRITICAL — ${this.activeScenario.alarm.name} escalated. ~2 minutes to plant shutdown.`);
-      this.radio.say('marcy', `Critical alarm on ${this.activeScenario.alarm.name}. Interlock timers are armed. We are minutes from a unit trip, tech.`);
-    } else if (this.tier === 2 && this.roundT >= TIER_SECONDS * 2) {
+      this.toast(`CRITICAL - ${this.activeScenario.alarm.name} escalated. ${tierSeconds} seconds to plant shutdown.`);
+      this.radio.say('voss', this.activeScenario.id === 'EXT_HEXANE_LEL'
+        ? `Critical combustible-gas alarm on ${this.activeScenario.alarm.name}. Keep personnel outside the boundary, isolate safely, and identify the containment failure.`
+        : `Critical alarm on ${this.activeScenario.alarm.name}. The interlock clock is armed. Ryder, prevent the trip or report why you could not.`);
+    } else if (this.tier === 2 && this.roundT >= tierSeconds * 2) {
       this.tier = 3;
       this.doShutdown();
-    } else if (this.tier === 3 && this.roundT >= TIER_SECONDS * 3) {
+    } else if (this.tier === 3 && this.roundT >= tierSeconds * 3) {
       this.failRound();
     }
   }
@@ -154,7 +300,7 @@ export class Game {
     this.alarmAcked = false;
     const line = SHUTDOWN_LINES[Math.min(this.strikes - 1, SHUTDOWN_LINES.length - 1)];
     this.radio.say('frank', line);
-    this.toast('⬛ PLANT SHUTDOWN — strike ' + this.strikes + ' of 3. You can still identify the cause for partial credit.');
+    this.toast('PLANT SHUTDOWN - STRIKE ' + this.strikes + ' OF 3. INCIDENT CAUSE STILL REQUIRED.');
     if (this.strikes >= 3) {
       // shutdown #3 still gives the 2-minute grace to answer; game over happens on fail
     }
@@ -163,7 +309,7 @@ export class Game {
   // ------------------------------------------------------------------ answers
   submitAnswer(raw) {
     if (this.state !== 'active' || !this.activeScenario) {
-      return { ok: false, msg: 'No active alarm. The plant is (briefly) fine.' };
+      return { ok: false, msg: 'No active alarm. Stop guessing and wait for an assigned call.' };
     }
     const guess = normTag(raw);
     if (!guess) return { ok: false, msg: 'Enter a tagname, e.g. TT-2210.' };
@@ -171,7 +317,7 @@ export class Game {
     const accepted = sc.accept.map(normTag);
     if (accepted.includes(guess)) {
       this.winRound();
-      return { ok: true, msg: 'CONFIRMED — root cause identified!' };
+      return { ok: true, msg: 'ROOT CAUSE CONFIRMED - MINIMUM STANDARD MET.' };
     }
     this.wrongGuesses += 1;
     this.score = Math.max(0, this.score - 100);
@@ -182,7 +328,8 @@ export class Game {
   }
 
   _scoreFor() {
-    const remainInTier = Math.max(0, TIER_SECONDS - (this.roundT % TIER_SECONDS));
+    const tierSeconds = this.tierSeconds();
+    const remainInTier = Math.max(0, tierSeconds - (this.roundT % tierSeconds));
     let base = 0, label = '';
     if (this.tier === 1) { base = 1000 + Math.round(remainInTier * 5); label = 'Solved in WARNING'; }
     else if (this.tier === 2) { base = 600 + Math.round(remainInTier * 3); label = 'Solved in CRITICAL'; }
@@ -203,9 +350,11 @@ export class Game {
     audio.good();
     const lines = WIN_LINES[solvedTier] || WIN_LINES[2];
     this.radio.say('frank', lines[Math.floor(Math.random() * lines.length)]);
+    this.lastRoundPassed = true;
+    if (this.onScenarioSolved) this.onScenarioSolved(sc, s.total, solvedTier);
 
     const html = `
-      <div class="res-big win">ROOT CAUSE CONFIRMED</div>
+      <div class="res-big win">CAUSE ACCEPTED - DELAY RECORDED</div>
       <table>
         <tr><td>Failed I/O point</td><td>${sc.answer}</td></tr>
         <tr><td>${s.label}</td><td>+${s.base}</td></tr>
@@ -221,9 +370,10 @@ export class Game {
 
   failRound() {
     const sc = this.activeScenario;
+    this.lastRoundPassed = false;
     const gameOver = this.strikes >= 3;
     const html = `
-      <div class="res-big fail">ROUND LOST — CAUSE NOT FOUND</div>
+      <div class="res-big fail">RESPONSE FAILED - CAUSE NOT FOUND</div>
       <table>
         <tr><td>The failed I/O point was</td><td>${sc.answer}</td></tr>
         <tr><td>Strikes</td><td>${this.strikes} / 3</td></tr>
@@ -241,7 +391,6 @@ export class Game {
     this.effects.stopScenarioEffects();
     this.activeScenario = null;
     this.sim.clearScenario();
-    document.getElementById('hud-objective').innerHTML = '';
 
     if (wasShutdown || !this.sim.running) {
       // restart the plant for the next round
@@ -259,7 +408,7 @@ export class Game {
       const goHtml = html + `
         <div class="res-debrief"><b>SHIFT TERMINATED — 3 STRIKES.</b> Corporate pulled the plug.
         Rounds solved: ${this.roundsSolved} · Final score: <b>${this.score}</b>
-        ${hs.isNew ? ' · 🏆 <b>NEW HIGH SCORE!</b>' : ` · Best (${this.difficulty}): ${hs.best}`}</div>`;
+        ${hs.isNew ? ' · <b>NEW HIGH SCORE RECORDED</b>' : ` · Best (${this.difficulty}): ${hs.best}`}</div>`;
       if (this.onRoundEnd) this.onRoundEnd(goHtml, true);
       return;
     }
@@ -271,7 +420,7 @@ export class Game {
   continueShift() {
     if (this.state === 'gameover') return;
     this.state = 'idle';
-    this.scheduleNextRound(15 + Math.random() * 25);
+    this.scheduleNextRound(this.courseMissionId ? 5 : 15 + Math.random() * 25);
   }
 
   updateHighScore() {
@@ -308,6 +457,9 @@ export class Game {
 
   tierTimeLeft() {
     if (this.state !== 'active') return 0;
-    return Math.max(0, TIER_SECONDS * this.tier - this.roundT);
+    if (this.multiplayer && Number.isFinite(this._multiplayerTierLeft)) return this._multiplayerTierLeft;
+    return Math.max(0, this.tierSeconds() * this.tier - this.roundT);
   }
+
+  tierSeconds() { return TIER_SECONDS[this.difficulty] || TIER_SECONDS.normal; }
 }

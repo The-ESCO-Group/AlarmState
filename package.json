@@ -1,0 +1,23 @@
+{
+  "name": "alarmstate",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:local": "python -m http.server 5190",
+    "start:multi": "node server/multiplayer-server.mjs",
+    "test:browser": "node tests/browser-qa.cjs",
+    "test:ladder": "node tests/ladder-qa.cjs",
+    "test:plant7-ladder": "node tests/plant7-ladder-qa.cjs",
+    "test:multitab": "node tests/multitab-qa.cjs",
+    "test:completion": "node tests/completion-qa.cjs",
+    "test:plc": "node tests/plc.test.mjs",
+    "check": "node --check js/main.js && node --check js/game.js && node --check js/world.js && node --check js/course.js && node --check js/campaign.js && node --check js/esco.js && node --check js/multiplayer.js && node --check js/plc.js && node --check js/plant7-esco.js && node --check js/data/plant-logic.js && node --check server/multiplayer-server.mjs && node tests/course.test.mjs && node tests/plc.test.mjs && node tests/multiplayer.test.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1"
+  }
+}

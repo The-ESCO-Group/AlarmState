@@ -2,7 +2,7 @@
 // Effects — steam plumes, leaks, beacon flashing, fan spin, positional hiss
 // ============================================================================
 import * as THREE from 'three';
-import { audio } from './audio.js';
+import { audio } from './audio.js?v=20260715d';
 
 function makePuffTexture() {
   const cv = document.createElement('canvas'); cv.width = cv.height = 64;

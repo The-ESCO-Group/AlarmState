@@ -20,16 +20,25 @@ export class AudioEngine {
   init() {
     if (this.ctx) return;
     const AC = window.AudioContext || window.webkitAudioContext;
-    this.ctx = new AC();
-    this.master = this.ctx.createGain(); this.master.gain.value = 0.85;
-    this.master.connect(this.ctx.destination);
-    this.alarmGain = this.ctx.createGain(); this.alarmGain.gain.value = 0.0;
-    this.alarmGain.connect(this.master);
-    this.ambGain = this.ctx.createGain(); this.ambGain.gain.value = 0.0;
-    this.ambGain.connect(this.master);
-    this.fxGain = this.ctx.createGain(); this.fxGain.gain.value = 1.0;
-    this.fxGain.connect(this.master);
-    this._buildAmbient();
+    if (!AC) return;
+    try {
+      this.ctx = new AC();
+      this.master = this.ctx.createGain(); this.master.gain.value = 0.85;
+      this.master.connect(this.ctx.destination);
+      this.alarmGain = this.ctx.createGain(); this.alarmGain.gain.value = 0.0;
+      this.alarmGain.connect(this.master);
+      this.ambGain = this.ctx.createGain(); this.ambGain.gain.value = 0.0;
+      this.ambGain.connect(this.master);
+      this.fxGain = this.ctx.createGain(); this.fxGain.gain.value = 1.0;
+      this.fxGain.connect(this.master);
+      this._buildAmbient();
+    } catch {
+      this.ctx = null;
+      this.master = null;
+      this.alarmGain = null;
+      this.ambGain = null;
+      this.fxGain = null;
+    }
   }
 
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
