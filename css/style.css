@@ -331,8 +331,24 @@ code { background:#222; color:#7fd4ff; padding:1px 4px; border-radius:3px; font-
 
 /* ================= Map ================= */
 #map-frame { background:#10161c; border:2px solid #3a4a58; color:#cde; }
-#map-head { padding:7px 12px; background:#1c2832; display:flex; justify-content:space-between; font-size:13px; letter-spacing:1px; }
+#map-head { min-height:42px; padding:7px 12px; background:#1c2832; display:flex; align-items:center; justify-content:space-between;
+  gap:18px; font-size:13px; letter-spacing:1px; }
+#map-mode-switch, #map-3d-tools { display:flex; align-items:center; gap:4px; }
+#map-mode-switch button, #map-3d-tools button { min-height:28px; border:1px solid #455966; padding:5px 10px;
+  color:#aebdc5; background:#111a20; font:800 9px Consolas,monospace; cursor:pointer; }
+#map-mode-switch button:hover, #map-3d-tools button:hover { border-color:#79b8ca; color:#fff; }
+#map-mode-switch button.active, #map-3d-tools button.active { border-color:#e8a020; color:#fff2cc; background:#3a2c14; }
+#map-mode-switch .win-btn { min-width:30px; padding:4px; color:#fff; }
 #map-canvas { display:block; margin:8px; background:#0a0e12; }
+#map-3d-tools { padding:7px; border:1px solid #40525d; background:rgba(10,16,20,.94); box-shadow:0 8px 30px rgba(0,0,0,.45); }
+#map-view-readout { min-width:116px; padding:0 8px; color:#8fd5e8; font:800 9px Consolas,monospace; text-align:right; }
+#map.viewer-3d { align-items:stretch; justify-content:stretch; background:transparent; pointer-events:none; }
+#map.viewer-3d #map-frame { position:absolute; inset:0; width:100%; height:100%; border:0; background:transparent; pointer-events:none; }
+#map.viewer-3d #map-head { position:absolute; top:14px; left:50%; z-index:2; width:min(720px,calc(100vw - 28px));
+  transform:translateX(-50%); border:1px solid #40525d; box-shadow:0 8px 30px rgba(0,0,0,.45); pointer-events:auto; }
+#map.viewer-3d #map-3d-tools { position:absolute; bottom:18px; left:50%; z-index:2; max-width:calc(100vw - 28px);
+  transform:translateX(-50%); pointer-events:auto; }
+#map.viewer-3d #map-canvas { display:none; }
 
 /* ================= Misc ================= */
 #flash-overlay { position:absolute; inset:0; pointer-events:none; z-index:40; opacity:0;
@@ -530,6 +546,10 @@ code { background:#222; color:#7fd4ff; padding:1px 4px; border-radius:3px; font-
   #hud-solve-hint { right:8px; bottom:8px; }
   #map-frame { width:calc(100vw - 16px); }
   #map-canvas { width:calc(100% - 16px); height:auto; }
+  #map-head { gap:6px; padding:6px 8px; }
+  #map-title { display:none; }
+  #map-3d-tools { flex-wrap:wrap; justify-content:center; }
+  #map-view-readout { width:100%; text-align:center; }
   #course-body { grid-template-columns:120px minmax(0,1fr); }
   .course-week { grid-template-columns:1fr; gap:2px; }
   .course-week b { white-space:normal; }

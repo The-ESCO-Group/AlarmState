@@ -2,7 +2,7 @@
 // ALARM STATE — main bootstrap: scene, loop, UI wiring, overlay management
 // ============================================================================
 import * as THREE from 'three';
-import { buildWorld } from './world.js?v=20260715e';
+import { buildWorld } from './world.js?v=20260731b';
 import { Player } from './player.js?v=20260715c';
 import { ProcessSim } from './sim.js';
 import { PlcScan } from './plc.js';
@@ -18,25 +18,63 @@ import { MULTIPLAYER_ROLES } from './multiplayer-protocol.js?v=20260716b';
 
 // ---------------- three.js setup ----------------
 const app = document.getElementById('app');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const rendererContext = renderer.getContext();
+const debugRendererInfo = rendererContext.getExtension('WEBGL_debug_renderer_info');
+const rendererName = debugRendererInfo
+  ? rendererContext.getParameter(debugRendererInfo.UNMASKED_RENDERER_WEBGL)
+  : '';
+const softwareRenderer = /swiftshader|llvmpipe|software/i.test(rendererName);
+renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio) * (softwareRenderer ? 0.5 : 1));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 0.98;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 800);
+const environmentCanvas = document.createElement('canvas');
+environmentCanvas.width = 1024; environmentCanvas.height = 512;
+const environmentContext = environmentCanvas.getContext('2d');
+const environmentSky = environmentContext.createLinearGradient(0, 0, 0, 360);
+environmentSky.addColorStop(0, '#86a4b4');
+environmentSky.addColorStop(0.55, '#d8d7cd');
+environmentSky.addColorStop(1, '#a5a49a');
+environmentContext.fillStyle = environmentSky;
+environmentContext.fillRect(0, 0, 1024, 360);
+const environmentGround = environmentContext.createLinearGradient(0, 360, 0, 512);
+environmentGround.addColorStop(0, '#77796d');
+environmentGround.addColorStop(1, '#34382f');
+environmentContext.fillStyle = environmentGround;
+environmentContext.fillRect(0, 360, 1024, 152);
+const sunGlow = environmentContext.createRadialGradient(760, 112, 2, 760, 112, 90);
+sunGlow.addColorStop(0, 'rgba(255,241,207,.95)');
+sunGlow.addColorStop(0.2, 'rgba(255,224,178,.55)');
+sunGlow.addColorStop(1, 'rgba(255,224,178,0)');
+environmentContext.fillStyle = sunGlow;
+environmentContext.fillRect(660, 12, 200, 200);
+const environmentSource = new THREE.CanvasTexture(environmentCanvas);
+environmentSource.mapping = THREE.EquirectangularReflectionMapping;
+environmentSource.colorSpace = THREE.SRGBColorSpace;
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+const environmentTarget = pmrem.fromEquirectangular(environmentSource);
+scene.environment = environmentTarget.texture;
+scene.environmentIntensity = 0.82;
+environmentSource.dispose();
+pmrem.dispose();
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 1500);
 
 const world = buildWorld(scene);
 const player = new Player(camera, renderer.domElement);
 player.setColliders(world.colliders);
 player.teleport(98, -102, -0.9);
-camera.position.set(98, 30, -102);
-camera.lookAt(30, 8, -54);
+camera.position.set(225, 145, -240);
+camera.lookAt(0, 8, 0);
 
 const sim = new ProcessSim();
 // PGP_Plant7_PLC. The controller scans the plant's real ladder against the
@@ -53,18 +91,21 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  lastSceneRender = -Infinity;
 });
 
 // ---------------- overlay management ----------------
 const OVERLAYS = ['menu', 'multiplayer', 'course', 'workorder', 'esco', 'howto', 'radio', 'solve', 'map', 'result', 'qualification', 'pause'];
 let currentOverlay = 'menu';
 let playing = false;
+let lastSceneRender = -Infinity;
 
 function showEl(id, show) { document.getElementById(id).classList.toggle('hidden', !show); }
 
 function openOverlay(name) {
   if (currentOverlay && currentOverlay !== name) closeOverlay(false);
   currentOverlay = name;
+  lastSceneRender = -Infinity;
   player.enabled = false;
   player.unlock();
   if (name === 'radio') radio.openOverlay();
@@ -76,6 +117,7 @@ function closeOverlay(relock = true) {
   if (currentOverlay === 'radio') radio.closeOverlay();
   else showEl(currentOverlay, false);
   currentOverlay = null;
+  lastSceneRender = -Infinity;
   if (playing && relock) {
     player.enabled = true;
     player.lock();
@@ -86,6 +128,10 @@ document.querySelectorAll('[data-close]').forEach(b =>
   b.addEventListener('click', () => {
     audio.uiClick();
     const closing = b.dataset.close;
+    if (closing === 'map') {
+      closeMapOverlay();
+      return;
+    }
     closeOverlay();
     if (!playing && (closing === 'course' || closing === 'howto' || closing === 'multiplayer')) openOverlay('menu');
   }));
@@ -439,6 +485,180 @@ document.getElementById('hud-solve-hint').addEventListener('click', openSolve);
 // ---------------- map ----------------
 const mapCanvas = document.getElementById('map-canvas');
 let currentWaypoint = null;
+let mapReturnOverlay = null;
+const mapViewer = {
+  mode: '2d', active: false, dragging: false, pointerId: null, pan: false,
+  lastX: 0, lastY: 0, savedPosition: null, savedQuaternion: null,
+  target: new THREE.Vector3(0, 10, 0), radius: 370, theta: 2.4, phi: 1.12,
+  preset: 'site',
+};
+const mapPresets = {
+  site: { target: [0, 10, 0], radius: 370, theta: 2.4, phi: 1.12 },
+  north: { target: [0, 0, 0], radius: 430, theta: 0, phi: 0.08 },
+  process: { target: [0, 12, -28], radius: 155, theta: 2.15, phi: 1.02 },
+  storage: { target: [126, 10, -114], radius: 118, theta: 2.45, phi: 1.04 },
+  warehouse: { target: [-45, 8, 150], radius: 118, theta: 2.72, phi: 1.08 },
+  admin: { target: [36, 4, -149], radius: 76, theta: Math.PI, phi: 1.16 },
+};
+
+function updateMapReadout() {
+  const label = mapViewer.preset ? mapViewer.preset.toUpperCase() : 'FREE';
+  document.getElementById('map-view-readout').textContent = `${label} / ${Math.round(mapViewer.radius)} M`;
+  document.querySelectorAll('[data-map-preset]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.mapPreset === mapViewer.preset);
+  });
+}
+
+function applyMapViewerCamera() {
+  if (!mapViewer.active) return;
+  const sinPhi = Math.sin(mapViewer.phi);
+  camera.position.set(
+    mapViewer.target.x + mapViewer.radius * sinPhi * Math.sin(mapViewer.theta),
+    mapViewer.target.y + mapViewer.radius * Math.cos(mapViewer.phi),
+    mapViewer.target.z + mapViewer.radius * sinPhi * Math.cos(mapViewer.theta),
+  );
+  camera.lookAt(mapViewer.target);
+  camera.updateMatrixWorld(true);
+  lastSceneRender = -Infinity;
+  updateMapReadout();
+}
+
+function setMapPreset(name) {
+  const preset = mapPresets[name];
+  if (!preset) return;
+  mapViewer.target.set(...preset.target);
+  mapViewer.radius = preset.radius;
+  mapViewer.theta = preset.theta;
+  mapViewer.phi = preset.phi;
+  mapViewer.preset = name;
+  applyMapViewerCamera();
+}
+
+function activateMapViewer() {
+  if (!mapViewer.active) {
+    mapViewer.savedPosition = camera.position.clone();
+    mapViewer.savedQuaternion = camera.quaternion.clone();
+    mapViewer.active = true;
+  }
+  setMapPreset(mapViewer.preset || 'site');
+}
+
+function restoreMapCamera() {
+  if (!mapViewer.active) return;
+  if (mapViewer.savedPosition) camera.position.copy(mapViewer.savedPosition);
+  if (mapViewer.savedQuaternion) camera.quaternion.copy(mapViewer.savedQuaternion);
+  camera.updateMatrixWorld(true);
+  mapViewer.active = false;
+  mapViewer.dragging = false;
+  mapViewer.pointerId = null;
+  mapViewer.savedPosition = null;
+  mapViewer.savedQuaternion = null;
+  lastSceneRender = -Infinity;
+}
+
+function setMapMode(mode) {
+  mapViewer.mode = mode === '3d' ? '3d' : '2d';
+  const is3d = mapViewer.mode === '3d';
+  document.getElementById('map').classList.toggle('viewer-3d', is3d);
+  document.getElementById('map-3d-tools').classList.toggle('hidden', !is3d);
+  document.getElementById('map-title').textContent = is3d ? 'PLANT 7 - 3D MAP VIEWER' : 'PLANT 7 - PLOT PLAN';
+  document.querySelectorAll('[data-map-mode]').forEach((button) => {
+    const active = button.dataset.mapMode === mapViewer.mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  if (is3d) activateMapViewer();
+  else restoreMapCamera();
+  lastSceneRender = -Infinity;
+}
+
+function openMap(mode = '2d') {
+  const previousOverlay = currentOverlay;
+  mapReturnOverlay = previousOverlay && previousOverlay !== 'map' ? previousOverlay : null;
+  if (currentOverlay) closeOverlay(false);
+  openOverlay('map');
+  setMapMode(mode);
+  if (mode === '2d') drawMap();
+}
+
+function closeMapOverlay() {
+  restoreMapCamera();
+  const returnTo = mapReturnOverlay;
+  mapReturnOverlay = null;
+  closeOverlay(!returnTo);
+  if (returnTo) openOverlay(returnTo);
+}
+
+document.querySelectorAll('[data-map-mode]').forEach((button) => {
+  button.addEventListener('click', () => {
+    audio.uiClick();
+    setMapMode(button.dataset.mapMode);
+  });
+});
+document.querySelectorAll('[data-map-preset]').forEach((button) => {
+  button.addEventListener('click', () => {
+    audio.uiClick();
+    setMapPreset(button.dataset.mapPreset);
+  });
+});
+document.getElementById('btn-map-viewer').addEventListener('click', () => {
+  audio.uiClick();
+  openMap('3d');
+});
+document.getElementById('btn-map-viewer-pause').addEventListener('click', () => {
+  audio.uiClick();
+  openMap('3d');
+});
+
+renderer.domElement.addEventListener('pointerdown', (event) => {
+  if (currentOverlay !== 'map' || mapViewer.mode !== '3d') return;
+  mapViewer.dragging = true;
+  mapViewer.pointerId = event.pointerId;
+  mapViewer.pan = event.button === 2 || event.shiftKey;
+  mapViewer.lastX = event.clientX;
+  mapViewer.lastY = event.clientY;
+  renderer.domElement.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+});
+renderer.domElement.addEventListener('pointermove', (event) => {
+  if (!mapViewer.dragging || event.pointerId !== mapViewer.pointerId) return;
+  const dx = event.clientX - mapViewer.lastX;
+  const dy = event.clientY - mapViewer.lastY;
+  mapViewer.lastX = event.clientX;
+  mapViewer.lastY = event.clientY;
+  mapViewer.preset = null;
+  if (mapViewer.pan) {
+    const forward = mapViewer.target.clone().sub(camera.position).setY(0).normalize();
+    const right = forward.clone().cross(camera.up).normalize();
+    const scale = mapViewer.radius * 0.0014;
+    mapViewer.target.addScaledVector(right, -dx * scale);
+    mapViewer.target.addScaledVector(forward, dy * scale);
+  } else {
+    mapViewer.theta -= dx * 0.006;
+    mapViewer.phi = THREE.MathUtils.clamp(mapViewer.phi + dy * 0.005, 0.06, Math.PI / 2 - 0.025);
+  }
+  applyMapViewerCamera();
+  event.preventDefault();
+});
+const finishMapDrag = (event) => {
+  if (event.pointerId !== mapViewer.pointerId) return;
+  mapViewer.dragging = false;
+  mapViewer.pointerId = null;
+  renderer.domElement.releasePointerCapture?.(event.pointerId);
+};
+renderer.domElement.addEventListener('pointerup', finishMapDrag);
+renderer.domElement.addEventListener('pointercancel', finishMapDrag);
+renderer.domElement.addEventListener('wheel', (event) => {
+  if (currentOverlay !== 'map' || mapViewer.mode !== '3d') return;
+  mapViewer.radius = THREE.MathUtils.clamp(mapViewer.radius * Math.exp(event.deltaY * 0.001), 28, 620);
+  mapViewer.preset = null;
+  applyMapViewerCamera();
+  event.preventDefault();
+}, { passive: false });
+renderer.domElement.addEventListener('contextmenu', (event) => {
+  if (currentOverlay === 'map' && mapViewer.mode === '3d') event.preventDefault();
+});
+
 function drawMap() {
   const cx = mapCanvas.getContext('2d');
   cx.fillStyle = '#0a0e12'; cx.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
@@ -522,6 +742,16 @@ function findInteractable() {
 }
 
 document.addEventListener('keydown', (e) => {
+  if (currentOverlay === 'map') {
+    if (e.code === 'Escape' || e.code === 'Tab' || e.code === 'KeyM') {
+      e.preventDefault();
+      closeMapOverlay();
+    } else if (e.code === 'KeyV') {
+      e.preventDefault();
+      setMapMode(mapViewer.mode === '3d' ? '2d' : '3d');
+    }
+    return;
+  }
   if (!playing) return;
   // overlay-level keys
   if (currentOverlay) {
@@ -598,7 +828,7 @@ document.addEventListener('keydown', (e) => {
     if (multiplayer.active && !multiplayer.can('submit')) game.toast(multiplayer.roleDenied('submit'));
     else if (game.activeScenario) openSolve();
   } else if (e.code === 'KeyM') {
-    openOverlay('map');
+    openMap('2d');
   }
 });
 
@@ -725,6 +955,7 @@ let last = performance.now();
 document.getElementById('btn-course').disabled = false;
 document.getElementById('btn-howto').disabled = false;
 document.getElementById('btn-multiplayer').disabled = false;
+document.getElementById('btn-map-viewer').disabled = false;
 refreshCampaignMenu();
 
 function loop() {
@@ -754,15 +985,25 @@ function loop() {
     });
   }
 
-  if (currentOverlay === 'map') drawMap();
+  if (currentOverlay === 'map' && mapViewer.mode === '2d') drawMap();
   if (playing) { updateHUD(); findInteractable(); }
 
-  renderer.render(scene, camera);
+  const mapViewerActive = currentOverlay === 'map' && mapViewer.mode === '3d';
+  const renderInterval = mapViewerActive
+    ? (softwareRenderer ? 160 : 0)
+    : (playing && !currentOverlay ? (softwareRenderer ? 320 : 0) : 1200);
+  if (now - lastSceneRender >= renderInterval) {
+    renderer.render(scene, camera);
+    lastSceneRender = performance.now();
+  }
 }
 loop();
 
 // debug/QA handle
-window.__alarmstate = { game, sim, radio, player, course, campaign, esco, multiplayer, world, openOverlay, closeOverlay };
+window.__alarmstate = {
+  game, sim, radio, player, course, campaign, esco, multiplayer, world,
+  renderer, scene, camera, openOverlay, closeOverlay,
+};
 
 // preload speech voices (Chrome loads them async)
 if ('speechSynthesis' in window) {

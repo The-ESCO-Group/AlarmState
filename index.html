@@ -76,6 +76,7 @@
       <div id="campaign-menu-progress"><span id="campaign-progress-copy">0 of 21 assignments complete</span><i><b id="campaign-progress-bar"></b></i></div>
       <button class="menu-btn multiplayer-entry" id="btn-multiplayer" disabled><b>CREW RESPONSE</b><span>2-4 PLAYER LAN CO-OP</span></button>
       <button class="menu-btn secondary" id="btn-howto" disabled>NEW TECH ORIENTATION</button>
+      <button class="menu-btn secondary" id="btn-map-viewer" disabled>PLANT 7 MAP VIEWER</button>
     </div>
     <div id="menu-foot">Plant 7 failed its alarm audit. Dana Voss is watching every response. Unsupported answers, slow work, and shutdowns become part of your permanent qualification record.</div>
   </div>
@@ -251,7 +252,23 @@
 <!-- ============ MAP ============ -->
 <div id="map" class="overlay-light hidden">
   <div id="map-frame">
-    <div id="map-head"><span>PLANT 7 — PLOT PLAN</span><button class="win-btn" data-close="map">✕</button></div>
+    <div id="map-head">
+      <span id="map-title">PLANT 7 - PLOT PLAN</span>
+      <div id="map-mode-switch" role="tablist" aria-label="Map view">
+        <button class="active" data-map-mode="2d" role="tab" aria-selected="true">PLOT PLAN</button>
+        <button data-map-mode="3d" role="tab" aria-selected="false">3D VIEW</button>
+        <button class="win-btn" data-close="map" aria-label="Close map">X</button>
+      </div>
+    </div>
+    <div id="map-3d-tools" class="hidden" aria-label="3D map viewpoints">
+      <button data-map-preset="site">SITE</button>
+      <button data-map-preset="north">TOP</button>
+      <button data-map-preset="process">PROCESS</button>
+      <button data-map-preset="storage">STORAGE</button>
+      <button data-map-preset="warehouse">WAREHOUSE</button>
+      <button data-map-preset="admin">ADMIN</button>
+      <output id="map-view-readout">SITE / 350 M</output>
+    </div>
     <canvas id="map-canvas" width="700" height="520"></canvas>
   </div>
 </div>
@@ -302,6 +319,7 @@
       <button class="menu-btn" id="btn-resume">RESUME SHIFT</button>
       <button class="menu-btn hidden" id="btn-crew-room">CREW ROOM</button>
       <button class="menu-btn" id="btn-course2">QUALIFICATION LOG</button>
+      <button class="menu-btn" id="btn-map-viewer-pause">PLANT 7 MAP VIEWER</button>
       <button class="menu-btn" id="btn-howto2">HOW TO PLAY</button>
       <label id="voice-toggle-row"><input type="checkbox" id="voice-toggle" checked> Radio voices (speech synthesis)</label>
       <button class="menu-btn" id="btn-quit">CLOCK OUT (END SHIFT)</button>

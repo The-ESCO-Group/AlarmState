@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
-const root = 'http://127.0.0.1:5191';
+const root = process.env.ALARMSTATE_URL || 'http://127.0.0.1:5191';
 const artifacts = path.join(__dirname, 'artifacts');
 fs.mkdirSync(artifacts, { recursive: true });
 
@@ -24,10 +24,10 @@ fs.mkdirSync(artifacts, { recursive: true });
   try {
     await pageA.goto(root, { waitUntil: 'domcontentloaded' });
     await pageA.waitForSelector('#btn-multiplayer:not([disabled])');
-    await pageA.screenshot({ path: path.join(artifacts, 'multiplayer-menu.png') });
+    await pageA.screenshot({ path: path.join(artifacts, 'multiplayer-menu.png'), timeout: 90000 });
     await pageA.click('#btn-multiplayer');
     await pageA.waitForSelector('#multiplayer:not(.hidden)');
-    await pageA.screenshot({ path: path.join(artifacts, 'multiplayer-entry.png') });
+    await pageA.screenshot({ path: path.join(artifacts, 'multiplayer-entry.png'), timeout: 90000 });
     await pageA.fill('#mp-name', 'Ryder');
     await pageA.click('#mp-create');
     await pageA.waitForFunction(() => document.querySelector('#mp-room-code')?.textContent.length === 5);
@@ -43,7 +43,7 @@ fs.mkdirSync(artifacts, { recursive: true });
     await pageA.click('[data-mp-role="controls"]');
     await pageB.click('[data-mp-role="operator"]');
     await pageA.waitForFunction(() => !document.querySelector('#mp-start').disabled);
-    await pageA.screenshot({ path: path.join(artifacts, 'multiplayer-lobby.png') });
+    await pageA.screenshot({ path: path.join(artifacts, 'multiplayer-lobby.png'), timeout: 90000 });
     await pageA.click('#mp-start');
 
     await pageA.waitForSelector('#hud:not(.hidden)');
@@ -55,12 +55,12 @@ fs.mkdirSync(artifacts, { recursive: true });
 
     await pageB.evaluate(() => window.__alarmstate.player.teleport(5, 23.8, 0));
     await pageB.waitForTimeout(700);
-    await pageA.screenshot({ path: path.join(artifacts, 'multiplayer-plant.png') });
+    await pageA.screenshot({ path: path.join(artifacts, 'multiplayer-plant.png'), timeout: 90000 });
 
     await pageB.keyboard.press('h');
     await pageB.waitForSelector('#esco:not(.hidden)');
     await pageB.waitForTimeout(900);
-    await pageB.screenshot({ path: path.join(artifacts, 'multiplayer-operator-hmi.png') });
+    await pageB.screenshot({ path: path.join(artifacts, 'multiplayer-operator-hmi.png'), timeout: 90000 });
     await pageA.waitForFunction(() => window.__alarmstate.multiplayer.state.alarmAcked === true);
     await pageB.keyboard.press('Escape');
 
