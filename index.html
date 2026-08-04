@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ALARM STATE — Prairie Gold Processing</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23141a20'/%3E%3Ccircle cx='8' cy='8' r='5' fill='%23e8a020'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=20260723a">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
 </script>
@@ -21,12 +21,19 @@
   <div id="hud-topleft">
     <div class="hud-box">
       <div class="hud-line"><span class="hud-label">TECH</span> <span id="hud-player">T. RYDER</span></div>
-      <div class="hud-line"><span class="hud-label">SHIFT</span> <span id="hud-shift">00:00</span></div>
-      <div class="hud-line"><span class="hud-label">SCORE</span> <span id="hud-score">0</span></div>
-      <div class="hud-line"><span class="hud-label">STREAK</span> <span id="hud-streak">x1.0</span></div>
-      <div class="hud-line"><span class="hud-label">STRIKES</span> <span id="hud-strikes">○○○</span></div>
+      <div class="hud-line"><span class="hud-label">DUTY</span> <span id="hud-shift">00:00</span></div>
+      <div class="hud-line"><span class="hud-label" id="hud-progress-label">QUALIFIED</span> <span id="hud-progress">0 / 21</span></div>
+      <div class="hud-line"><span class="hud-label">MANAGER</span> <span id="hud-manager">REPORT OVERDUE</span></div>
+      <div class="hud-line field-stat"><span class="hud-label">CALL SCORE</span> <span id="hud-score">0</span></div>
+      <div class="hud-line field-stat"><span class="hud-label">STRIKES</span> <span id="hud-strikes">○○○</span></div>
+      <span id="hud-streak" class="hidden">x1.0</span>
     </div>
   </div>
+
+  <aside id="hud-crew" class="hidden">
+    <header><span id="hud-room">CREW -----</span><b id="hud-role">ROLE</b></header>
+    <div id="hud-crew-rows"></div>
+  </aside>
 
   <div id="hud-alarm" class="hidden">
     <div id="hud-alarm-tier">⚠ WARNING</div>
@@ -34,15 +41,21 @@
     <div id="hud-alarm-timer">02:00 TO ESCALATION</div>
   </div>
 
-  <div id="hud-objective"></div>
+  <section id="hud-objective">
+    <span id="objective-kicker">PLANT 7 QUALIFICATION</span>
+    <strong id="objective-title">Report to dispatch</strong>
+    <p id="objective-detail"></p>
+    <div id="objective-route"><span id="objective-destination">Reliability Center</span><b id="objective-distance">-- m</b></div>
+  </section>
+
+  <div id="hud-waypoint"><i>▲</i><span id="waypoint-direction">AHEAD</span></div>
 
   <div id="hud-subtitles"></div>
 
   <div id="hud-interact" class="hidden">[E] Use HMI Terminal</div>
 
   <div id="hud-keys">
-    <span><b>WASD</b> Move</span><span><b>SHIFT</b> Run</span><span><b>E</b> Interact</span>
-    <span><b>R</b> Radio</span><span><b>ENTER</b> Solve Problem</span><span><b>M</b> Map</span><span><b>ESC</b> Menu</span>
+    <span><b>WASD</b> Move</span><span><b>SHIFT</b> Run</span><span><b>E</b> Use</span><span><b>M</b> Plot plan</span><span><b>ESC</b> Pause</span>
   </div>
 
   <div id="hud-solve-hint">⏎ SOLVE PROBLEM</div>
@@ -58,18 +71,127 @@
       <div class="logo-sub">SOYBEAN EXTRACTION &amp; REFINING · MAPLE JUNCTION, IOWA · PLANT 7</div>
     </div>
     <div id="menu-buttons">
-      <div class="menu-section-label">SELECT SHIFT DIFFICULTY</div>
-      <button class="menu-btn diff-btn" data-diff="easy">DAY SHIFT <span class="diff-desc">— Easy · helpful crew, clear clues</span></button>
-      <button class="menu-btn diff-btn selected" data-diff="normal">SWING SHIFT <span class="diff-desc">— Normal · some bad info on the radio</span></button>
-      <button class="menu-btn diff-btn" data-diff="hard">GRAVEYARD <span class="diff-desc">— Hard · skeleton crew, liars, attitude</span></button>
-      <button class="menu-btn" id="btn-start">▶ CLOCK IN</button>
-      <button class="menu-btn" id="btn-howto">HOW TO PLAY</button>
+      <div class="menu-section-label">CONTINUOUS APPRENTICESHIP CAMPAIGN</div>
+      <button class="menu-btn" id="btn-course" disabled><b id="campaign-start-label">LOADING PLANT 7...</b><span class="diff-desc">Preparing the plant simulation and ESCO workstations.</span></button>
+      <div id="campaign-menu-progress"><span id="campaign-progress-copy">0 of 21 assignments complete</span><i><b id="campaign-progress-bar"></b></i></div>
+      <button class="menu-btn multiplayer-entry" id="btn-multiplayer" disabled><b>CREW RESPONSE</b><span>2-4 PLAYER LAN CO-OP</span></button>
+      <button class="menu-btn secondary" id="btn-howto" disabled>NEW TECH ORIENTATION</button>
     </div>
-    <div id="menu-scores">
-      <div class="menu-section-label">HIGH SCORES</div>
-      <div id="hs-rows"></div>
+    <div id="menu-foot">Plant 7 failed its alarm audit. Dana Voss is watching every response. Unsupported answers, slow work, and shutdowns become part of your permanent qualification record.</div>
+  </div>
+</div>
+
+<!-- ============ MULTIPLAYER CREW ROOM ============ -->
+<div id="multiplayer" class="overlay hidden">
+  <section id="mp-panel" aria-labelledby="mp-title">
+    <header id="mp-head">
+      <div><span>PLANT 7 INCIDENT COMMAND</span><h2 id="mp-title">CREW RESPONSE</h2></div>
+      <button class="win-btn" data-close="multiplayer" aria-label="Close crew room">X</button>
+    </header>
+    <div id="mp-connect-view">
+      <div class="mp-brief">
+        <strong>ONE PLANT. ONE CLOCK. ONE CREW RECORD.</strong>
+        <p>Each technician has a locked job during live incidents. Work in ESCO, move through the same plant, relay evidence, and close the initiating failure before the shared trip clock expires.</p>
+      </div>
+      <label class="mp-field">CALLSIGN<input id="mp-name" maxlength="18" autocomplete="nickname" value="Ryder"></label>
+      <div class="mp-connect-actions">
+        <button id="mp-create">CREATE CREW</button>
+        <span>OR</span>
+        <label class="mp-field">ROOM CODE<input id="mp-code" maxlength="5" autocomplete="off" spellcheck="false" placeholder="ABCDE"></label>
+        <button id="mp-join">JOIN CREW</button>
+      </div>
     </div>
-    <div id="menu-foot">v1.0 · WebGL required · Audio on for radio &amp; alarm horns · Click CLOCK IN, then click the screen to capture the mouse</div>
+    <div id="mp-room-view" class="hidden">
+      <div class="mp-room-strip">
+        <div><span>ROOM CODE</span><strong id="mp-room-code">-----</strong></div>
+        <button id="mp-invite">COPY INVITE</button>
+      </div>
+      <div class="mp-layout">
+        <div>
+          <span class="mp-label">SELECT ONE ROLE</span>
+          <div id="mp-roles">
+            <button data-mp-role="controls"><b>CONTROLS TECHNICIAN</b><span>ESCO Logic and final I/O submission</span><small>OPEN</small></button>
+            <button data-mp-role="operator"><b>CONTROL ROOM OPERATOR</b><span>Prebuilt HMI, alarms, and trends</span><small>OPEN</small></button>
+            <button data-mp-role="field"><b>FIELD OPERATOR</b><span>Equipment inspection and field evidence</span><small>OPEN</small></button>
+            <button data-mp-role="maintenance"><b>MAINTENANCE LEAD</b><span>ESCO diagnostics and repair history</span><small>OPEN</small></button>
+          </div>
+        </div>
+        <div class="mp-roster-block">
+          <span class="mp-label">CONNECTED CREW</span>
+          <div id="mp-roster"></div>
+          <button id="mp-start" class="hidden">DEPLOY CREW</button>
+          <button id="mp-reconnect" class="hidden">RECONNECT TO CREW</button>
+          <button id="mp-leave">LEAVE ROOM</button>
+        </div>
+      </div>
+    </div>
+    <footer id="mp-status">CREATE A CREW OR JOIN WITH A ROOM CODE</footer>
+  </section>
+</div>
+
+<!-- ============ 12-WEEK QUALIFICATION PROGRAM ============ -->
+<div id="course" class="overlay hidden">
+  <div id="course-frame">
+    <header id="course-head">
+      <div><span>PRAIRIE GOLD · PERSONNEL RECORD</span><b>PLANT 7 QUALIFICATION LOG</b></div>
+      <div class="course-head-actions">
+        <button id="course-portfolio" disabled>ESCO PORTFOLIO 0/8</button>
+        <button id="course-reset">RESET PROGRESS</button>
+        <button class="win-btn" data-close="course">✕</button>
+      </div>
+    </header>
+    <div id="course-body"></div>
+  </div>
+</div>
+
+<!-- ============ MANDATORY MISSION BRIEF ============ -->
+<div id="workorder" class="overlay hidden">
+  <section id="workorder-panel" role="dialog" aria-modal="true" aria-labelledby="wo-title">
+    <header>
+      <span id="wo-kicker">WEEK 1 · WORK ORDER</span>
+      <h2 id="wo-title">Mission</h2>
+      <p id="wo-story"></p>
+      <p id="wo-problem"></p>
+    </header>
+    <div class="wo-context">
+      <article><span>PLANT NOW</span><p id="wo-plant"></p></article>
+      <article><span>PRODUCTION EXPOSURE</span><p id="wo-why"></p></article>
+      <article><span>NON-NEGOTIABLE GATE</span><p id="wo-success"></p></article>
+    </div>
+    <section id="wo-tag-bank" class="hidden" aria-labelledby="wo-tag-bank-title">
+      <header>
+        <div><span>PROGRAMMING REFERENCE</span><b id="wo-tag-bank-title">MISSION VARIABLE BANK</b></div>
+        <p>Use these names and types. Add any tag marked CREATE; choose the logic and rung structure yourself.</p>
+      </header>
+      <div id="wo-tag-bank-list" class="tag-bank-table"></div>
+    </section>
+    <div class="wo-actions">
+      <button id="wo-back">DECLINE / REPORT TO MANAGER</button>
+      <div id="wo-hint"><button id="wo-hint-button">USE ONE HINT</button><p id="wo-hint-text" class="hidden"></p></div>
+      <button id="wo-start">TAKE THE ASSIGNMENT</button>
+    </div>
+  </section>
+</div>
+
+<!-- ============ REAL ESCO AUTOMATION STUDIO ============ -->
+<div id="esco" class="overlay hidden">
+  <div id="esco-shell">
+    <header id="esco-bar">
+      <div><span>ESCO AUTOMATION STUDIO · LIVE PROJECT</span><b id="esco-task-title">CV-101 Engineering Workspace</b><p id="esco-task-problem"></p></div>
+      <strong id="esco-status">CONNECTING</strong>
+      <button id="esco-tags" class="hidden" aria-expanded="false" aria-controls="esco-tag-drawer">TAG BANK</button>
+      <button id="esco-review">REVIEW BRIEF</button>
+      <button id="esco-lock" disabled>LOCKED</button>
+    </header>
+    <iframe id="esco-frame" title="ESCO Automation Studio" allow="clipboard-read; clipboard-write"></iframe>
+    <aside id="esco-tag-drawer" class="hidden" aria-labelledby="esco-tag-bank-title">
+      <header>
+        <div><span>MISSION REFERENCE</span><b id="esco-tag-bank-title">MISSION VARIABLE BANK</b></div>
+        <button id="esco-tags-close" type="button" aria-label="Close tag bank" title="Close tag bank">X</button>
+      </header>
+      <p>Use these names and types. Add any tag marked CREATE. The bank does not prescribe a rung solution.</p>
+      <div id="esco-tag-bank-list" class="tag-bank-table"></div>
+    </aside>
   </div>
 </div>
 
@@ -78,84 +200,20 @@
   <div class="panel-window" style="max-width:860px">
     <div class="panel-titlebar"><span>NEW TECHNICIAN ORIENTATION — PGP PLANT 7</span><button class="win-btn" data-close="howto">✕</button></div>
     <div class="panel-body" id="howto-body">
-      <h3>Your job</h3>
-      <p>You are the on-shift I&amp;C technician. When an alarm comes in, find the <b>root cause</b> and identify it by the <b>tagname of the I/O point</b> that is causing the problem (e.g. <code>TCV-2208</code>). Type it into the <b>SOLVE PROBLEM</b> box (ENTER key) before the plant shuts down.</p>
-      <h3>Alarm escalation — 2 minutes per tier</h3>
+      <h3>Your assignment</h3>
+      <p>You are T. Ryder, Plant 7's probationary controls technician. The plant failed an alarm-management audit. Shift Supervisor Frank Kowalski controls your work orders; Plant Manager Dana Voss controls whether you remain in the program. Every delay, unsupported answer, escalation, and shutdown is recorded.</p>
+      <h3>The campaign loop</h3>
+      <p>Follow the amber route immediately, take the assigned work, prove the required result, and report for debrief. Management will interrupt when you waste time. The qualification log records all 21 assignments and does not erase poor response history.</p>
+      <h3>ESCO Automation Studio</h3>
+      <p>Programming assignments open only from the marked ESCO workstation and remain locked until your actual project passes the requirement. Live production calls enable the prebuilt HMI with <b>H</b> and controller diagnostics with <b>Tab</b>. The brief gives context and one conceptual hint, never a completed rung or HMI answer.</p>
+      <h3>Live fault calls</h3>
+      <p>Travel to the affected equipment, compare field evidence with HMI values, logic, trends, and radio reports, then press <b>Enter</b> and submit the root-cause I/O tag such as <code>TCV-2208</code>.</p>
+      <h3>Alarm escalation</h3>
       <p><span class="tier-chip warn">TIER 1 — WARNING</span> → <span class="tier-chip crit">TIER 2 — CRITICAL</span> → <span class="tier-chip shut">TIER 3 — PLANT SHUTDOWN</span></p>
-      <p>Solve in Tier 1 for maximum points. A shutdown is a <b>strike</b> — three strikes and corporate ends your shift. During a shutdown you have 2 more minutes to identify the cause for partial credit before the round is lost.</p>
-      <h3>Your tools</h3>
-      <ul>
-        <li><b>HMI terminals (E)</b> — FactoryTalk-style operator screens in the control room and at field panels. Live process values, equipment status, alarm summary and trends. The HMI jumps straight to the screen for the active alarm.</li>
-        <li><b>Engineering workstation (E)</b> — the development node in the control room. Opens the ladder logic <i>for the routine that generated the alarm</i> so you aren't digging through the whole program. Click any tagname to cross-reference it.</li>
-        <li><b>Radio (R)</b> — key up and ask operators and supervisors questions. They answer based on what they can see. Some of them are wrong. Some of them are jerks. On GRAVEYARD, at least one of them is actively feeding you garbage.</li>
-        <li><b>Walk the plant (WASD)</b> — listen for steam leaks, look for stopped motors, beacons, and leaks. The plant itself is a clue.</li>
-      </ul>
-      <h3>Scoring</h3>
-      <ul>
-        <li>Solve in WARNING: 1000 pts + time bonus · CRITICAL: 600 + time bonus · during SHUTDOWN: 200</li>
-        <li>Wrong guess: −100 pts (and the supervisor will hear about it)</li>
-        <li>Difficulty multiplier: Day x1 · Swing x1.5 · Graveyard x2 · Streak bonus up to +50%</li>
-      </ul>
-      <h3>Reading tags</h3>
-      <p>ISA style: first letter = variable (T temp, P pressure, L level, F flow, A analytic, I current, S speed, Z position), then modifiers (T transmitter, CV control valve, SH/SL switch high/low). Number = area: 11xx prep, 22xx extraction, 33xx refinery, 41xx boiler, 42xx cooling, 51xx meal.</p>
+      <p>Escalation windows are 95 seconds on early calls, 75 seconds on normal calls, and 55 seconds on hard calls. A shutdown is a strike and still requires an incident cause. Three strikes terminate the shift and send the failed assignment back to dispatch.</p>
+      <h3>Controls</h3>
+      <p><b>WASD</b> move · <b>Shift</b> run · <b>E</b> interact · <b>M</b> plot plan · <b>R</b> radio · <b>H</b> live HMI · <b>Tab</b> live logic · <b>Enter</b> submit root cause · <b>Esc</b> pause</p>
     </div>
-  </div>
-</div>
-
-<!-- ============ HMI OVERLAY (FactoryTalk style) ============ -->
-<div id="hmi" class="overlay hidden">
-  <div id="hmi-frame">
-    <div id="hmi-titlebar">
-      <span id="hmi-title-icon">▣</span>
-      <span id="hmi-title-text">FactoryTalk View SE Client — PGP_PLANT7 — [OVERVIEW]</span>
-      <button class="win-btn" data-close="hmi">✕</button>
-    </div>
-    <div id="hmi-alarmbanner">
-      <div id="hmi-ab-rows"></div>
-      <div id="hmi-ab-buttons">
-        <button class="ft-btn" id="hmi-ack">ACK</button>
-        <button class="ft-btn" id="hmi-ackall">ACK ALL</button>
-        <button class="ft-btn" data-hmiscreen="ALARMS">SUMMARY</button>
-      </div>
-    </div>
-    <div id="hmi-screen"></div>
-    <div id="hmi-nav">
-      <button class="ft-btn nav-btn" data-hmiscreen="OVERVIEW">OVERVIEW</button>
-      <button class="ft-btn nav-btn" data-hmiscreen="PREP">PREP</button>
-      <button class="ft-btn nav-btn" data-hmiscreen="EXTRACTION">EXTRACTION</button>
-      <button class="ft-btn nav-btn" data-hmiscreen="REFINERY">REFINERY</button>
-      <button class="ft-btn nav-btn" data-hmiscreen="UTILITIES">UTILITIES</button>
-      <button class="ft-btn nav-btn" data-hmiscreen="MEAL">MEAL/LOADOUT</button>
-      <button class="ft-btn nav-btn" data-hmiscreen="ALARMS">ALARM SUMMARY</button>
-      <button class="ft-btn nav-btn" data-hmiscreen="TREND">TREND</button>
-      <div id="hmi-clock">00:00:00</div>
-    </div>
-  </div>
-</div>
-
-<!-- ============ LADDER LOGIC OVERLAY (Studio 5000 style) ============ -->
-<div id="ladder" class="overlay hidden">
-  <div id="ld-frame">
-    <div id="ld-titlebar">
-      <span>Logix Designer — PGP_Plant7_PLC [1756-L85E] — Online ● RUN</span>
-      <button class="win-btn" data-close="ladder">✕</button>
-    </div>
-    <div id="ld-toolbar">
-      <span class="ld-mode">● Online</span><span class="ld-run">RUN</span>
-      <span class="ld-path">Path: AB_ETH-1\192.168.7.10\Backplane\0</span>
-      <span id="ld-xref-banner" class="hidden"></span>
-    </div>
-    <div id="ld-main">
-      <div id="ld-tree">
-        <div class="ld-tree-head">Controller Organizer</div>
-        <div id="ld-tree-body"></div>
-      </div>
-      <div id="ld-rungs-wrap">
-        <div id="ld-routine-tab"></div>
-        <div id="ld-rungs"></div>
-      </div>
-    </div>
-    <div id="ld-status">For help, press F1 — but help isn’t coming.</div>
   </div>
 </div>
 
@@ -185,7 +243,7 @@
       <input id="solve-input" type="text" placeholder="e.g. TCV-2208" autocomplete="off" spellcheck="false">
       <div id="solve-feedback"></div>
       <div id="solve-buttons"><button class="ft-btn" id="solve-submit">SUBMIT TO SUPERVISOR</button></div>
-      <div id="solve-note">Wrong answers cost 100 points and a chewing-out. Format: letters-numbers, e.g. TT-2210, FCV-4112, M-3225.</div>
+      <div id="solve-note">Every unsupported answer costs 100 points and records a failed decision. Format: letters-numbers, e.g. TT-2210, FCV-4112, M-3225.</div>
     </div>
   </div>
 </div>
@@ -207,12 +265,43 @@
   </div>
 </div>
 
+<!-- ============ FINAL QUALIFICATION DECISION ============ -->
+<div id="qualification" class="overlay hidden">
+  <section id="qualification-panel" aria-labelledby="qualification-title">
+    <header>
+      <span>PRAIRIE GOLD PROCESSING · PLANT 7 PERSONNEL DECISION</span>
+      <h2 id="qualification-title">Qualification complete</h2>
+      <p>The acceptance run is closed. The permanent record remains available for review.</p>
+    </header>
+    <div class="qualification-verdict">
+      <div class="qualification-stamp"><span>STATUS</span><strong>QUALIFIED</strong><small>SUPERVISED PLANT ACCESS</small></div>
+      <dl>
+        <div><dt>PROGRAM</dt><dd id="qualification-weeks">12 WEEKS</dd></div>
+        <div><dt>ASSIGNMENTS</dt><dd id="qualification-assignments">21 / 21</dd></div>
+        <div><dt>AVERAGE GATE</dt><dd id="qualification-average">100%</dd></div>
+        <div><dt>ESCO ARCHIVE</dt><dd id="qualification-portfolio">8 / 8</dd></div>
+      </dl>
+    </div>
+    <div class="qualification-decision">
+      <span>MANAGEMENT DISPOSITION</span>
+      <p id="qualification-decision-copy">Minimum Plant 7 qualification standard met. Technician is cleared for supervised controls work. Any future unsupported change, missed trip, or bypassed safety condition will reopen this review.</p>
+      <small id="qualification-date">RECORDED --</small>
+    </div>
+    <footer>
+      <button id="qualification-log">REVIEW 12-WEEK RECORD</button>
+      <button id="qualification-continue">RETURN TO PLANT</button>
+    </footer>
+  </section>
+</div>
+
 <!-- ============ PAUSE ============ -->
 <div id="pause" class="overlay hidden">
   <div class="panel-window" style="max-width:480px">
     <div class="panel-titlebar"><span>SHIFT PAUSED</span></div>
     <div class="panel-body" style="text-align:center">
       <button class="menu-btn" id="btn-resume">RESUME SHIFT</button>
+      <button class="menu-btn hidden" id="btn-crew-room">CREW ROOM</button>
+      <button class="menu-btn" id="btn-course2">QUALIFICATION LOG</button>
       <button class="menu-btn" id="btn-howto2">HOW TO PLAY</button>
       <label id="voice-toggle-row"><input type="checkbox" id="voice-toggle" checked> Radio voices (speech synthesis)</label>
       <button class="menu-btn" id="btn-quit">CLOCK OUT (END SHIFT)</button>
@@ -223,6 +312,6 @@
 <div id="flash-overlay"></div>
 <div id="toast"></div>
 
-<script type="module" src="js/main.js"></script>
+<script type="module" src="js/main.js?v=20260723a"></script>
 </body>
 </html>

@@ -1,8 +1,8 @@
 // ============================================================================
 // Radio — channels, contextual questions, NPC responses with attitude
 // ============================================================================
-import { NPCS, CHANNELS, FIELD_NPC_BY_AREA, QUESTIONS, FALLBACKS } from './data/scenarios.js';
-import { audio } from './audio.js';
+import { NPCS, CHANNELS, FIELD_NPC_BY_AREA, QUESTIONS, FALLBACKS } from './data/scenarios.js?v=20260716a';
+import { audio } from './audio.js?v=20260715d';
 
 export class Radio {
   constructor(game) {
@@ -78,7 +78,7 @@ export class Radio {
     let text;
     if (!sc) {
       text = chanId === 'sup'
-        ? 'There is NO alarm right now. Which means you have time to do those calibration sheets you owe me. Get off the radio.'
+        ? 'There is no active alarm. Use the time to clear your overdue calibration sheets and get off this channel.'
         : FALLBACKS[npcId];
     } else if (entry) {
       text = entry.text;
@@ -86,8 +86,8 @@ export class Radio {
       if (diff === 'hard' && chanId === 'field' && q.id === 'q_gauge' && !this._sandbagged) {
         this._sandbagged = true;
         text = npcId === 'dale'
-          ? 'You want ME to climb out there and read a gauge so YOU can take credit? ...Fine. Gimme a minute. Ask me again.'
-          : 'Hold on, I gotta find my flashlight... ask me again in a minute, sorry!';
+          ? 'You want a field reading, wait for a real field reading. Give me a minute and ask again.'
+          : 'Field check is not complete. Ask again when I am at the gauge.';
         this.asked.delete(key);   // let them re-ask
         setTimeout(() => this.renderAsk(), 400);
       }
@@ -135,7 +135,7 @@ export class Radio {
     line.className = 'sub-line sub-radio';
     line.innerHTML = `<span class="sub-name">📻 ${npc.name}:</span> ${text}`;
     this.subEl.appendChild(line);
-    while (this.subEl.children.length > 3) this.subEl.removeChild(this.subEl.firstChild);
+    while (this.subEl.children.length > 2) this.subEl.removeChild(this.subEl.firstChild);
     clearTimeout(this.subTimeout);
     this.subTimeout = setTimeout(() => { this.subEl.innerHTML = ''; }, Math.max(5000, text.length * 65));
   }

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESCO Automation Studio</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23141a20'/%3E%3Cpath d='M3 3h10v10H3z' fill='%23e8a020'/%3E%3C/svg%3E" />
+    <script>
+      const launchParams = new URLSearchParams(window.location.search);
+      if (launchParams.has("desktop-startup")) {
+        document.documentElement.dataset.desktopStartup = "true";
+      }
+      // AlarmState supplies its own simulated controller data. The optional
+      // desktop/MCP live-edit stream is deliberately disabled in this mode.
+      if (launchParams.has("alarmstate")) {
+        Object.defineProperty(window, "EventSource", { value: undefined, configurable: true });
+      }
+    </script>
+    <style>
+      html[data-desktop-startup="true"],
+      html[data-desktop-startup="true"] body,
+      html[data-desktop-startup="true"] #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #fbf7ef;
+      }
+    </style>
+    <script type="module" crossorigin src="/esco/assets/index-BciMXBEP.js"></script>
+    <link rel="stylesheet" crossorigin href="/esco/assets/index-hJKW9Vc9.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

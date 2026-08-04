@@ -15,6 +15,8 @@ export const NPCS = {
     color: '#c8b0ff', personality: 'rambling, conspiratorial' },
   frank: { name: 'Frank Kowalski',  role: 'Shift Supervisor', voice: { pitch: 0.62, rate: 1.0 },
     color: '#ff6b6b', personality: 'mean, impatient' },
+  voss:  { name: 'Dana Voss',       role: 'Plant Manager', voice: { pitch: 0.82, rate: 1.08 },
+    color: '#ff3e35', personality: 'severe, cost-focused, intolerant of delay' },
   bobby: { name: 'Bobby Tran',      role: 'Maintenance Lead', voice: { pitch: 0.95, rate: 1.15 },
     color: '#7fffd4', personality: 'busy, helpful' },
 };
@@ -46,21 +48,18 @@ export const FALLBACKS = {
   pete:  "Uh, nothing weird that I can see from here, but I'm still learning where everything is, honestly.",
   rhonda:'Everything on my end is exactly as mediocre as it always is, sweetheart.',
   goose: "Can't say. You know they cut the PM budget again? That's the REAL problem at this plant.",
-  frank: "Why are you on the radio asking ME? I pay YOU to know. Get me an answer or get me a resume.",
+  frank: 'Dispatch is not technical support. Return with evidence, a failed point, and a defensible answer.',
+  voss:  'This radio is for decisions, not uncertainty. State the cause or clear the channel.',
   bobby: "I'm elbows-deep in the pellet mill gearbox right now, man. Unless it's burning down, gimme an hour.",
 };
 
 // ---------------------------------------------------------------------------
-// Ladder DSL helpers
+// A scenario carries the incident: what the process does, what the crew says,
+// and which routine of the plant's controller owns the alarm. It does NOT carry
+// ladder logic. Plant 7 runs one controller program (js/data/plant-logic.js)
+// whatever is going wrong, exactly as a real site does — the fault moves the
+// process values, and the logic reacts to them on its own.
 // ---------------------------------------------------------------------------
-const XIC = (tag, on) => ({ t: 'XIC', tag, on: !!on });
-const XIO = (tag, on) => ({ t: 'XIO', tag, on: !!on });
-const OTE = (tag, on) => ({ t: 'OTE', tag, on: !!on });
-const OTL = (tag, on) => ({ t: 'OTL', tag, on: !!on });
-const TON = (tag, pre, on) => ({ t: 'TON', tag, pre, on: !!on });
-const CMP = (t, a, b, on) => ({ t, a, b, on: !!on });   // GRT / LES / GEQ / LEQ, a = live tag
-const PIDB = (tag, pv, cv, on) => ({ t: 'PID', tag, pv, cv, on: !!on });
-const DEV = (tag, a, b, lim, on) => ({ t: 'DEV', tag, a, b, lim, on: !!on }); // |a-b| > lim deviation block
 
 // ============================================================================
 // SCENARIOS
@@ -112,24 +111,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'P11_Conditioner', program: 'Prep', rungs: [
-      { c: 'Bean Conditioner temperature control loop. PV = TT-1115, CV = TCV-1116. Setpoint 145 degF.',
-        els: [XIC('Prep_Permissive', true), PIDB('TIC_1115', 'TT-1115', 'TCV-1116', true)] },
-      { c: 'Conditioner outlet temp LOW alarm. Alarm if TT-1115 below 130 degF for 15 sec.',
-        els: [CMP('LES', 'TT-1115', '130.0', true), TON('TAL_1115_TMR', '15000', true), OTE('TAL_1115', true)] },
-      { c: 'TCV-1116 VALVE DEVIATION — command vs position feedback. If output and ZT-1116 disagree by more than 20% for 30 sec, flag positioner/actuator failure.',
-        els: [DEV('ZDA_1116_DEV', 'TCV-1116', 'ZT-1116', '20.0', true), TON('ZDA_1116_TMR', '30000', true), OTE('ZDA_1116', true)] },
-      { c: 'Conditioner steam supply pressure low (header side). Not active — supply is healthy.',
-        els: [CMP('LES', 'PT-1117', '30.0', false), OTE('PAL_1117', false)] },
-    ]},
-    { name: 'P11_Mills', program: 'Prep', rungs: [
-      { c: 'Cracking Mill A run permissive — all healthy.',
-        els: [XIC('Mill_A_Start', true), XIO('VAH_1120', true), XIO('Mill_A_OL', true), OTE('M-1110', true)] },
-      { c: 'Cracking mill A vibration high alarm. Not active.',
-        els: [CMP('GRT', 'VT-1120', '0.30', false), TON('VAH_TMR', '10000', false), OTE('VAH_1120', false)] },
-    ]},
-  ],
+  program: 'Prep', routine: 'P11_Conditioner',
 },
 
 // --------------------------------------------------------------------------
@@ -174,18 +156,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'P11_Mills', program: 'Prep', rungs: [
-      { c: 'Cracking Mill A run circuit. Trips on sustained high vibration or overload.',
-        els: [XIC('Mill_A_Start', true), XIO('VSH_1120_TRIP', true), XIO('Mill_A_OL', true), OTE('M-1110', true)] },
-      { c: 'Mill A vibration HIGH alarm — VT-1120 above 0.30 in/s for 10 sec. ** NOTE 3/14: erratic readings reported after screen change, instrument suspect — J.M. **',
-        els: [CMP('GRT', 'VT-1120', '0.30', true), TON('VAH_TMR_1120', '10000', true), OTE('VAH_1120', true)] },
-      { c: 'Mill A vibration TRIP — 0.45 in/s for 20 sec shuts down the mill.',
-        els: [CMP('GRT', 'VT-1120', '0.45', false), TON('VSH_TMR_1120', '20000', false), OTL('VSH_1120_TRIP', false)] },
-      { c: 'Mill A motor current high alarm. Not active — amps normal.',
-        els: [CMP('GRT', 'IT-1110', '135.0', false), OTE('IAH_1110', false)] },
-    ]},
-  ],
+  program: 'Prep', routine: 'P11_Mills',
 },
 
 // --------------------------------------------------------------------------
@@ -230,20 +201,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'E22_Extractor', program: 'Extraction', rungs: [
-      { c: 'Extractor main drive run circuit.',
-        els: [XIC('Extractor_Start', true), XIO('IT2105_TRIP', true), OTE('M-2105', true)] },
-      { c: 'Extractor drive current HIGH alarm at 115A / trip at 138A.',
-        els: [CMP('GRT', 'IT-2105', '115.0', true), TON('IAH_TMR', '5000', true), OTE('IAH_2105', true)] },
-      { c: 'Spent flake drag conveyor speed select. Hopper hi-level LSH-2130 commands FAST speed to pull the hopper down. ** Switch has never made this rung true this shift. **',
-        els: [XIC('LSH-2130', false), TON('FAST_TMR', '2000', false), OTE('CV2135_FAST', false)] },
-      { c: 'Spent flake hopper HIGH level alarm from LSH-2130.',
-        els: [XIC('LSH-2130', false), OTE('LAH_2130', false)] },
-      { c: 'Extractor bed level high — feed cutback.',
-        els: [CMP('GRT', 'LT-2110', '85.0', false), OTE('FEED_CUTBACK', false)] },
-    ]},
-  ],
+  program: 'Extraction', routine: 'E22_Extractor',
 },
 
 // --------------------------------------------------------------------------
@@ -291,20 +249,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'E22_DT', program: 'Extraction', rungs: [
-      { c: 'DT Tray 4 temperature control. PV = TT-2210, CV = TCV-2208 sparge steam valve. SP 215 degF.',
-        els: [XIC('DT_Permissive', true), PIDB('TIC_2210', 'TT-2210', 'TCV-2208', true)] },
-      { c: 'DT Tray 4 temp HIGH alarm — above 235 degF.',
-        els: [CMP('GRT', 'TT-2210', '235.0', true), TON('TAH_TMR_2210', '8000', true), OTE('TAH_2210', true)] },
-      { c: 'TCV-2208 VALVE DEVIATION — controller output vs ZT-2208 position. Disagreement > 25% for 20 sec = stuck valve / actuator failure.',
-        els: [DEV('ZDA_2208_DEV', 'TCV-2208', 'ZT-2208', '25.0', true), TON('ZDA_TMR_2208', '20000', true), OTE('ZDA_2208', true)] },
-      { c: 'DT high-high temp interlock — 255 degF closes the steam block valve and trips feed.',
-        els: [CMP('GRT', 'TT-2210', '255.0', false), TON('TSH_TMR', '5000', false), OTL('DT_STEAM_TRIP', false)] },
-      { c: 'Sparge steam supply pressure low alarm. Not active.',
-        els: [CMP('LES', 'PT-2206', '35.0', false), OTE('PAL_2206', false)] },
-    ]},
-  ],
+  program: 'Extraction', routine: 'E22_DT',
 },
 
 // --------------------------------------------------------------------------
@@ -350,20 +295,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'E23_Pumps', program: 'Extraction', rungs: [
-      { c: 'Miscella transfer pump P-2302 run circuit. Trips on seal pot low level after 60 sec delay. ** Seal pot LSL-2303: 1 = level OK. **',
-        els: [XIC('P2302_Start', true), XIC('LSL-2303', false), TON('SEAL_TRIP_TMR', '60000', false), OTE('M-2302', true)] },
-      { c: 'P-2302 seal pot LOW level alarm — barrier fluid lost, seal failure likely.',
-        els: [XIO('LSL-2303', true), OTE('LAL_2303', true)] },
-      { c: 'P-2302 seal flush low flow alarm. Not active — flush flow OK.',
-        els: [XIO('FSL-2304', false), TON('FSL_TMR', '10000', false), OTE('FAL_2304', false)] },
-      { c: 'Pump alley hexane HIGH alarm at 15% LEL. HIGH-HIGH at 40% trips extraction train.',
-        els: [CMP('GRT', 'AT-2301', '15.0', true), OTE('AAH_2301', true)] },
-      { c: 'Hexane HIGH-HIGH trip — 40% LEL.',
-        els: [CMP('GRT', 'AT-2301', '40.0', false), TON('LEL_TRIP_TMR', '3000', false), OTL('EXT_GAS_TRIP', false)] },
-    ]},
-  ],
+  program: 'Extraction', routine: 'E23_Pumps',
 },
 
 // --------------------------------------------------------------------------
@@ -411,20 +343,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'R34_Vacuum', program: 'Refinery', rungs: [
-      { c: 'Ejector motive steam pressure control. PV = PT-3410, CV = PCV-3412. SP 150 psi.',
-        els: [XIC('Ref_Vac_Permissive', true), PIDB('PIC_3410', 'PT-3410', 'PCV-3412', true)] },
-      { c: 'Bleacher vacuum LOW alarm — below 22 inHg for 20 sec.',
-        els: [CMP('LES', 'PT-3140', '22.0', true), TON('PAL_TMR_3140', '20000', true), OTE('PAL_3140', true)] },
-      { c: 'PCV-3412 VALVE DEVIATION — command vs ZT-3412 feedback > 20% for 30 sec.',
-        els: [DEV('ZDA_3412_DEV', 'PCV-3412', 'ZT-3412', '20.0', true), TON('ZDA_TMR_3412', '30000', true), OTE('ZDA_3412', true)] },
-      { c: 'Motive steam pressure LOW — ejector performance degraded below 125 psi.',
-        els: [CMP('LES', 'PT-3410', '125.0', true), OTE('PAL_3410', true)] },
-      { c: 'Main header low pressure (boiler side). Not active — header healthy.',
-        els: [CMP('LES', 'PT-4105', '105.0', false), OTE('PAL_4105', false)] },
-    ]},
-  ],
+  program: 'Refinery', routine: 'R34_Vacuum',
 },
 
 // --------------------------------------------------------------------------
@@ -472,20 +391,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'R32_Deod', program: 'Refinery', rungs: [
-      { c: 'Deodorizer discharge pump P-3225 run circuit with seal-in. ** OL-3225 = 1 when overload relay is healthy. Rung is BROKEN — find the open contact. **',
-        els: [XIC('P3225_Start', true), XIC('OL-3225', false), XIO('LT3220_LOLO', true), OTE('M-3225', false)] },
-      { c: 'P-3225 overload TRIPPED alarm.',
-        els: [XIO('OL-3225', true), OTE('OLA_3225', true)] },
-      { c: 'Deodorizer level HIGH alarm — above 65% for 15 sec.',
-        els: [CMP('GRT', 'LT-3220', '65.0', true), TON('LAH_TMR_3220', '15000', true), OTE('LAH_3220', true)] },
-      { c: 'Deodorizer level HIGH-HIGH — 88% trips feed and sparge steam.',
-        els: [CMP('GRT', 'LT-3220', '88.0', false), OTL('DEOD_FEED_TRIP', false)] },
-      { c: 'RBD oil flow to storage LOW alarm.',
-        els: [CMP('LES', 'FT-3250', '20.0', true), TON('FAL_TMR_3250', '20000', true), OTE('FAL_3250', true)] },
-    ]},
-  ],
+  program: 'Refinery', routine: 'R32_Deod',
 },
 
 // --------------------------------------------------------------------------
@@ -533,20 +439,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'U41_Boiler', program: 'Utilities', rungs: [
-      { c: 'Three-element feedwater control: drum level + steam flow + feedwater flow. CV = FCV-4112.',
-        els: [XIC('Blr1_Master', true), PIDB('LIC_4110', 'LT-4110', 'FCV-4112', true)] },
-      { c: 'Drum level LOW alarm — below 38% for 10 sec.',
-        els: [CMP('LES', 'LT-4110', '38.0', true), TON('LAL_TMR_4110', '10000', true), OTE('LAL_4110', true)] },
-      { c: 'FCV-4112 VALVE DEVIATION — command vs ZT-4112 > 20% for 30 sec. Positioner / actuator failure.',
-        els: [DEV('ZDA_4112_DEV', 'FCV-4112', 'ZT-4112', '20.0', true), TON('ZDA_TMR_4112', '30000', true), OTE('ZDA_4112', true)] },
-      { c: 'Drum level LOW-LOW — 20% = MFT, burner trip, plant steam loss. Pray this stays false.',
-        els: [CMP('LES', 'LT-4110', '20.0', false), TON('LOLO_TMR', '3000', false), OTL('BLR1_MFT', false)] },
-      { c: 'BFW pump P-4115 run circuit. Healthy.',
-        els: [XIC('P4115_Start', true), XIO('P4115_OL', true), OTE('M-4115', true)] },
-    ]},
-  ],
+  program: 'Utilities', routine: 'U41_Boiler',
 },
 
 // --------------------------------------------------------------------------
@@ -594,20 +487,7 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'U42_CoolingTower', program: 'Utilities', rungs: [
-      { c: 'Cooling tower fan CT-1 run circuit. Drops out on VFD fault. ** VFD-4215: 1 = FAULTED. Rung is BROKEN — fault contact is open. **',
-        els: [XIC('CT1_Start', true), XIO('VFD-4215', false), OTE('M-4215', false)] },
-      { c: 'CT-1 fan VFD FAULT alarm.',
-        els: [XIC('VFD-4215', true), OTE('VFA_4215', true)] },
-      { c: 'Cooling water supply temp HIGH alarm — above 92 degF for 30 sec.',
-        els: [CMP('GRT', 'TT-4210', '92.0', true), TON('TAH_TMR_4210', '30000', true), OTE('TAH_4210', true)] },
-      { c: 'CW circulation pump P-4220 run circuit. Healthy.',
-        els: [XIC('P4220_Start', true), XIO('P4220_OL', true), OTE('M-4220', true)] },
-      { c: 'Basin level low — makeup valve open command. Not active.',
-        els: [CMP('LES', 'LT-4225', '55.0', false), OTE('MAKEUP_VLV', false)] },
-    ]},
-  ],
+  program: 'Utilities', routine: 'U42_CoolingTower',
 },
 
 // --------------------------------------------------------------------------
@@ -653,41 +533,29 @@ export const SCENARIOS = [
       },
     },
   },
-  routines: [
-    { name: 'M51_Cooler', program: 'Meal', rungs: [
-      { c: 'Cooler discharge airlock RV-5118 run circuit. Motor contactor closed, run feedback TRUE.',
-        els: [XIC('RV5118_Start', true), XIO('RV5118_OL', true), OTE('M-5118', true)] },
-      { c: 'RV-5118 SPEED DEVIATION — motor running but zero-speed switch SS-5118 shows rotor stopped for 8 sec. Sheared pin / coupling failure.',
-        els: [XIC('M-5118', true), XIO('SS-5118', true), TON('SPD_TMR_5118', '8000', true), OTE('SPA_5118', true)] },
-      { c: 'Pellet cooler discharge temp HIGH — above 125 degF for 20 sec.',
-        els: [CMP('GRT', 'TT-5120', '125.0', true), TON('TAH_TMR_5120', '20000', true), OTE('TAH_5120', true)] },
-      { c: 'Cooler bed level HIGH — feed gate cutback above 75%.',
-        els: [CMP('GRT', 'LT-5125', '75.0', true), OTE('BED_CUTBACK', true)] },
-      { c: 'Cooler exhaust fan run circuit. Healthy.',
-        els: [XIC('Fan_Start', true), XIO('Fan_OL', true), OTE('M-5115', true)] },
-    ]},
-  ],
+  program: 'Meal', routine: 'M51_Cooler',
 },
 ];
 
-// Wrong-guess supervisor abuse, escalating
+// Unsupported submissions become formal performance failures, escalating.
 export const WRONG_GUESS_LINES = [
-  'THAT’s your answer? That tag has nothing to do with it. Minus a hundred from your review, hotshot.',
-  'Wrong AGAIN. You know what, don’t answer. Just point at things until something fixes itself, that’s clearly the strategy.',
-  'I’ve seen contractors with a two-day badge troubleshoot better than this. WRONG.',
-  'Incredible. Confidently, loudly, expensively WRONG. Keep going, you’re paying for my boat at this point.',
+  'Rejected. That tag does not match the evidence. You just spent production time on an unsupported answer.',
+  'Second failed submission. Stop guessing. Rebuild the cause chain before you touch the answer field again.',
+  'Third miss. Your shift record now shows repeated decisions without evidence. Find the initiating point.',
+  'You are no longer troubleshooting; you are creating noise during an emergency. One defensible tag or get off the call.',
 ];
 
 export const SHUTDOWN_LINES = [
-  'That’s it. PLANT’S DOWN. You hear that silence? That’s money NOT being made. Find the cause for the restart report — you owe me that much.',
-  'Full shutdown. Corporate’s already calling. Identify the failed point for the incident report or so help me...',
+  'Plant is down. Every silent drive is lost production. Identify the cause for the restart record before the grace clock expires.',
+  'Second shutdown. Corporate is on the bridge and your response history is on the screen. Produce the failed point now.',
+  'Third shutdown. Your shift is terminated. Finish the incident cause because the investigation still requires an answer.',
 ];
 
 export const WIN_LINES = {
-  1: ['...huh. Yeah. That’s it. Maintenance confirms. Don’t let it go to your head.',
-      'Confirmed, that was the point. Fine work. I’ll deny saying that.'],
-  2: ['Took you long enough, but that’s the one. Get it fixed.',
-      'Maintenance confirms. Next time find it BEFORE my alarm panel looks like a Christmas tree.'],
-  3: ['That’s the cause, says maintenance. Shame the plant was DOWN while you figured it out.',
-      'Correct. For the restart report. Which I am writing. At 3 AM. Because of you.'],
+  1: ['Maintenance confirms the point. That is the expected response, not an achievement. Close the call.',
+      'Cause accepted. The clock and every unnecessary minute are still in the shift record. Move to disposition.'],
+  2: ['The tag is correct. It arrived after critical escalation, so the delay is recorded. Get the repair moving.',
+      'Maintenance confirms. Next time produce the cause before the interlock clock owns the decision.'],
+  3: ['Cause confirmed after shutdown. The answer is correct and the response still failed. Prepare for review.',
+      'Correct for the restart record. Production was already lost. Do not confuse diagnosis with recovery.'],
 };

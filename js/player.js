@@ -11,7 +11,7 @@ export class Player {
     this.dom = domElement;
     this.yaw = 0;
     this.pitch = 0;
-    this.pos = new THREE.Vector3(0, EYE, 18);
+    this.pos = new THREE.Vector3(116, EYE, 122);
     this.vel = new THREE.Vector3();
     this.keys = {};
     this.locked = false;
@@ -43,6 +43,21 @@ export class Player {
 
   setColliders(boxes) { this.colliders = boxes; }
 
+  teleport(x, z, yaw = this.yaw) {
+    this.pos.set(x, EYE, z);
+    this.vel.set(0, 0, 0);
+    this.yaw = yaw;
+    this.pitch = 0;
+    this._syncCamera(0);
+  }
+
+  _syncCamera(bob = 0) {
+    this.camera.position.set(this.pos.x, EYE + bob, this.pos.z);
+    this.camera.rotation.set(0, 0, 0);
+    this.camera.rotateY(this.yaw);
+    this.camera.rotateX(this.pitch);
+  }
+
   update(dt) {
     if (!this.enabled) return;
     const sprint = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
@@ -67,18 +82,15 @@ export class Player {
     this._tryMove(0, step.z);
 
     // plant boundary
-    this.pos.x = Math.max(-150, Math.min(150, this.pos.x));
-    this.pos.z = Math.max(-150, Math.min(150, this.pos.z));
+    this.pos.x = Math.max(-185, Math.min(185, this.pos.x));
+    this.pos.z = Math.max(-185, Math.min(185, this.pos.z));
 
     // head bob
     const moving = this.vel.length() > 0.5;
     if (moving) this.bobT += dt * (sprint ? 11 : 7.5);
     const bob = moving ? Math.sin(this.bobT) * 0.045 : 0;
 
-    this.camera.position.set(this.pos.x, EYE + bob, this.pos.z);
-    this.camera.rotation.set(0, 0, 0);
-    this.camera.rotateY(this.yaw);
-    this.camera.rotateX(this.pitch);
+    this._syncCamera(bob);
   }
 
   _tryMove(dx, dz) {

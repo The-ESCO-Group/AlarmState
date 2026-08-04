@@ -1,0 +1,3 @@
+node_modules/
+.multiplayer-server*.log
+tests/artifacts/
