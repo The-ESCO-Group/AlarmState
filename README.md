@@ -1,146 +1,217 @@
-# ALARMSTATE: PLANT 7
+# AlarmState: Plant 7
 
-AlarmState is a first-person automation apprenticeship set inside one operating soybean extraction and refining plant. You are T. Ryder, a newly hired controls technician. Plant 7 failed an alarm-management audit because its operators stopped trusting the controls. Your job is to rebuild that trust, earn field authorization, and keep the site online through corporate acceptance.
+**A first-person industrial automation apprenticeship built around one live soybean-processing plant.**
 
-The course and the plant are one game. There is no separate free-shift mode.
+AlarmState combines a continuous 12-week campaign, a simulated Plant 7 controller, an embedded ESCO Automation Studio, live HMI diagnostics, and 2-4 player LAN co-op. Players do not select lessons from a separate course menu. They report to dispatch, walk to real plant equipment, investigate production faults, program or diagnose the controller, and prove the repair against the running simulation.
 
-## Campaign loop
+![Plant 7 soybean-processing campus](docs/images/plant7-overview.png)
 
-1. Report to Frank at the Reliability Center dispatch desk.
-2. Accept the next unlocked assignment.
-3. Follow the amber world marker and plot-plan route to the equipment or ESCO workstation.
-4. Program, inspect, or troubleshoot using the embedded ESCO Automation Studio and the live Plant 7 simulation.
-5. Prove the result and return to dispatch for debrief.
+## What makes AlarmState different
 
-Progress is saved in the browser. The qualification log records 21 assignments across 12 weeks, but progression happens physically inside the same persistent plant.
+- **One continuous plant:** all 21 assignments happen inside the same persistent facility.
+- **Real controller behavior:** ladder routines scan continuously against live process values.
+- **ESCO everywhere:** logic, HMI, alarms, trends, diagnostics, and practical validation use the embedded studio.
+- **No supplied rung answers:** each work order provides the problem, required outcome, variable bank, and one conceptual hint.
+- **Real progression:** accepted ESCO work is archived into a final course portfolio before the workspace is cleared for the next assignment.
+- **Production pressure:** faults escalate through warning, critical, and shutdown states while score and qualification consequences continue to move.
+- **Crew Response:** two to four players split controls, HMI, field, and maintenance responsibilities in the same incident.
+- **Inspectable campus:** the plot plan and interactive 3D map provide six plant viewpoints, orbit controls, and zoom.
 
-## Qualification arc
+## Quick start
 
-- Weeks 1-4 commission CV-101, condition PE-101, create safe drive logic, and build the operator HMI in ESCO.
-- Weeks 5-9 move into live Prep, Extraction, Refinery, Utilities, and Meal fault calls.
-- Weeks 10-12 run multi-area diagnostic shifts, the graveyard gauntlet, and final Plant 7 acceptance.
-- Every programming assignment is checked against the learner's real ESCO project. The game provides context and one conceptual hint, never a completed rung or HMI answer.
-- Passing an ESCO gate archives that project, clears the ladder workspace for the next assignment, and adds the accepted work to the review-only ESCO Course Portfolio in the Qualification Log.
+### Requirements
 
-## The Plant 7 controller
+- Node.js 20 or newer
+- npm
+- A modern browser with WebGL enabled
 
-Plant 7 runs one real controller program, `PGP_Plant7_PLC`, authored once in
-`js/data/plant-logic.js`: five programs, sixteen routines, ~150 rungs. It does
-not change when the incident changes — a controller runs the same code whether
-the plant is healthy or on fire, and only the process values move.
-
-Nothing in it is scripted. There is no "this contact is true" flag anywhere.
-`js/plc.js` scans the ladder every frame against the process simulation with
-Logix semantics — series AND, parallel OR, output instructions passing rung
-condition through, timers accumulating toward `.DN`, latches retained across
-scans — and every alarm bit, interlock, and motor command in the game is the
-result. A healthy plant raises no alarms because the logic says so, not because
-a flag says so.
-
-The logic is held to the standards a controls engineer would apply at a review:
-
-- A coil never writes a wired field input. Run feedback is compared, not driven.
-- A timer never shares a rung with the output it delays; the delayed output is
-  driven from `XIC(timer.DN)` on its own rung.
-- Motor starters are 3-wire: a start/seal-in parallel branch, then the stop
-  button and every interlock in series ahead of the coil.
-- Valve deviation is computed with real math boxes (`SUB` then `ABS`, then a
-  comparison) because a controller has no "deviation instruction".
-- Exactly one `OTE` per BOOL across the controller — no double coils.
-- Every latched trip has a reset rung that also proves the cause has cleared.
-- Every routine is reached by a `JSR` from its program's `MainRoutine`.
-- `PID` is present and never executed. Closed-loop control has no faithful
-  offline algorithm, so the loops are declared model-only and the control valves
-  are moved by the process simulation instead of a faked controller.
-
-The operator alarm database is derived from the coils in the ladder rather than
-maintained as a second list, so it cannot drift away from the logic.
-
-`tests/plc.test.mjs` enforces all of the above, and proves it can: it runs the
-same audit against nine deliberately broken copies of the controller (a double
-coil, a coil on an input, an output after its timer, an unreachable subroutine,
-an empty branch leg, a latch with no reset, and so on) and requires every one to
-be rejected. It then scans each of the ten incidents and asserts the alarm — and
-the supporting evidence the debrief promises — is produced from live values.
-
-The generated project also passes ESCO Automation Studio's own verification with
-zero errors and zero warnings; the studio's status bar reads
-`Verification Passed (0 Errors)` when a routine is open.
-
-## Plant 7
-
-The procedural Three.js site includes the original CV-101 conveyor and process map plus:
-
-- Reliability Center, dispatch, HMI design studio, and covered conveyor training bay
-- Grain receiving pits, bucket elevator, storage silos, and enclosed transfer galleries
-- Bean Prep, Extraction/DT, Refinery, Utilities, Meal, and central control
-- Maintenance and instrument shop, MCC annex, packaging warehouse, and truck docks
-- Electrical substation, rail spur, gatehouse, parking, roads, pipe racks, and site lighting
-
-## Run locally
+### Install and run
 
 ```powershell
-cd C:\Users\nmodha\AlarmState
-npm.cmd run start:local
-```
-
-Open [http://127.0.0.1:5190/](http://127.0.0.1:5190/).
-
-## Crew Response multiplayer
-
-Crew Response is a server-authoritative LAN co-op shift for two to four players. One player creates a five-character room, assigns the crew, and deploys the team into the same live incident. The server owns the alarm clock, tier escalation, strikes, score, answer validation, and reconnect tokens.
-
-- Controls Technician uses ESCO Logic and submits the final I/O cause.
-- Control Room Operator uses the prebuilt ESCO HMI, alarms, and trends.
-- Field Operator reaches the affected equipment and reports physical evidence.
-- Maintenance Lead uses ESCO diagnostics and maintenance evidence.
-
-Start the multiplayer server on the host PC:
-
-```powershell
-cd C:\Users\nmodha\AlarmState
+git clone https://github.com/The-ESCO-Group/AlarmState.git
+cd AlarmState
+npm.cmd install
 npm.cmd run start:multi
 ```
 
-Open [http://127.0.0.1:5191/](http://127.0.0.1:5191/) on the host. Other computers on the same network open `http://HOST-PC-IP:5191/`, select **Crew Response**, and join with the room code or copied invite link. A disconnected player has 60 seconds to reclaim the same callsign and role.
+Open [http://127.0.0.1:5191/](http://127.0.0.1:5191/).
+
+`start:multi` serves the complete game and enables Crew Response. For a simple static single-player server, run `npm.cmd run start:local` and open [http://127.0.0.1:5190/](http://127.0.0.1:5190/).
+
+The commands use `npm.cmd` so they work in Windows PowerShell even when script execution blocks `npm.ps1`. On macOS or Linux, use `npm` instead.
+
+## The campaign
+
+You are T. Ryder, a newly hired controls technician at Prairie Gold Processing Plant 7. The plant failed its alarm-management audit because operators stopped trusting its indications and controls. Your job is to rebuild that trust, earn field authorization, and keep the site running through final acceptance.
+
+The normal shift loop is:
+
+1. Report to the Reliability Center dispatch desk.
+2. Accept the next unlocked work order.
+3. Follow the plant marker or map to the assigned equipment.
+4. Inspect the physical process, HMI evidence, and controller state.
+5. Program, diagnose, or commission the required system in ESCO.
+6. Prove the result against the live simulation.
+7. Return to dispatch for scoring and debrief.
+
+Progress is stored locally in the browser.
+
+## Twelve-week qualification
+
+| Phase | Focus |
+| --- | --- |
+| Weeks 1-2 | PLC fundamentals, tags, safe start/stop logic, photoeye conditioning, and one-count-per-carton logic |
+| Weeks 3-4 | Fault latching, timers, resets, motor permissives, alarm indication, and operator HMI construction |
+| Weeks 5-7 | Bean Prep, Extraction, desolventizer-toaster, interlocks, process evidence, and alarm response |
+| Weeks 8-9 | Refinery, Utilities, Meal, analog conditions, trends, and cross-area troubleshooting |
+| Weeks 10-11 | Multi-area incidents, incomplete evidence, team response, and graveyard-shift escalation |
+| Week 12 | Final Plant 7 acceptance and review of the assembled ESCO course portfolio |
+
+The game currently contains 21 practical assignments and 10 production fault scenarios.
+
+## ESCO Automation Studio
+
+ESCO is not a separate side panel or an answer screen. It opens when a work order requires controller or HMI work and remains part of the practical until the submitted project passes.
+
+The integrated studio provides:
+
+- Studio 5000-style ladder editing and controller organization
+- mission-specific tag banks with names, types, I/O roles, and engineering descriptions
+- contacts, coils, branches, timers, counters, latches, resets, comparisons, math, and subroutine structure
+- HMI display construction, live tags, alarm summary, and trends
+- project verification and practical-specific acceptance checks
+- automatic archival of passed work into the final qualification portfolio
+
+Assignments explain the plant problem and required result without inserting a completed rung or HMI answer.
+
+## Plant 7 controller
+
+Plant 7 runs one controller project, `PGP_Plant7_PLC`, defined in `js/data/plant-logic.js` and scanned by `js/plc.js`.
+
+Current conformance coverage includes:
+
+- 5 programs
+- 16 routines
+- 149 ladder rungs
+- 280 tags
+- 50 alarm definitions
+- 9 deliberately broken controller variants that must be rejected
+
+The scan engine implements series AND, parallel OR, timer accumulation, counter state, retained latches, output propagation, subroutine calls, and controller tag members. Alarm bits, motor commands, permissives, trips, and reset behavior are produced from the same live process values used by the game and HMI.
+
+Controller rules enforced by automated tests include:
+
+- no writing to physical input tags
+- one `OTE` writer per Boolean output
+- no output coil placed after the timer that delays it
+- no empty branch paths
+- every retained trip has a valid reset path
+- every routine is reachable from its program main routine
+- motor starters use valid seal-in, stop, and permissive structure
+
+## Crew Response multiplayer
+
+Crew Response is a server-authoritative LAN mode for two to four players.
+
+| Role | Responsibility |
+| --- | --- |
+| Controls Technician | Inspect ESCO Logic and submit the defensible failed I/O point |
+| Control Room Operator | Operate the prebuilt HMI, alarms, and process trends |
+| Field Operator | Reach the equipment and report physical process evidence |
+| Maintenance Lead | Prove mechanical and maintenance conditions that controls cannot see |
+
+The server owns room membership, unique role assignment, incident timing, alarm escalation, strikes, score, answer validation, and reconnect tokens. A disconnected player has 60 seconds to reclaim the same callsign and role.
+
+To join from another computer on the same network, open `http://HOST-PC-IP:5191/` and enter the five-character room code or use the copied invite link.
+
+## Plant 7
+
+The playable soybean extraction and refining campus includes:
+
+- truck receiving pits, scale house, bucket elevator, storage silos, and transfer galleries
+- Bean Prep, Extraction, DT, Refinery, Utilities, Meal, and central control areas
+- portal-frame warehouses, preparation and headhouse towers, loading bays, and process service floors
+- Reliability Center dispatch, ESCO engineering workstations, HMI design studio, and CV-101 training cell
+- maintenance and instrument shop, MCC buildings, packaging, finished-goods storage, and fire-water systems
+- rail spurs, electrical substation, tank farms, pipe racks, roads, parking, and perimeter landscaping
+
+The world uses local physically based materials and a CC0 modular industrial architecture asset while retaining optimized browser draw calls.
+
+![Interactive Plant 7 3D map viewer](docs/images/plant7-map-viewer.png)
 
 ## Controls
 
-`WASD` move | `Shift` run | `E` interact | `M` plot plan | `R` radio | `H` live ESCO HMI | `Tab` live ESCO logic | `Enter` submit root-cause tag | `Esc` pause
+| Key | Action |
+| --- | --- |
+| `WASD` | Move |
+| `Shift` | Run |
+| `E` | Interact |
+| `M` | Open plot plan / 3D map |
+| `R` | Radio |
+| `H` | Open live ESCO HMI |
+| `Tab` | Open live ESCO Logic |
+| `Enter` | Submit root-cause tag when prompted |
+| `Esc` | Pause or close the active workstation |
 
 ## Validation
+
+Run the core suite:
 
 ```powershell
 npm.cmd run check
 ```
 
-The check covers JavaScript syntax, all 12 weeks and 21 assignments, physical mission destinations, scenario references, ESCO ladder/HMI validators, campaign routing, Plant 7 project generation, multiplayer permissions, shared scoring, and reconnect recovery. It also runs the controller conformance suite (`npm.cmd run test:plc`), which audits the plant's ladder against ladder-logic standards, verifies that audit rejects nine injected defects, and scans all ten incidents to confirm each alarm is solved rather than authored.
+With the multiplayer server running, the visual and end-to-end checks are:
 
-With the multiplayer server running:
+```powershell
+npm.cmd run test:browser
+node tests/map-viewer-qa.cjs
+node tests/architecture-qa.cjs
+node tests/render-profile.cjs
+```
 
-- `npm.cmd run test:browser` performs a two-client desktop gameplay pass.
-- `npm.cmd run test:plant7-ladder` opens the real Plant 7 controller in the
-  embedded studio and checks that it renders as ladder — seal-in branches drawn
-  as parallel branches, no empty branch legs, terminal coils on the right rail,
-  and the live tag image accepted over the same channel the game uses.
+Additional focused checks are available through:
 
-Both write QA screenshots under `tests/artifacts/`.
+```powershell
+npm.cmd run test:plc
+npm.cmd run test:plant7-ladder
+npm.cmd run test:multitab
+npm.cmd run test:completion
+```
 
-## Main files
+The tests cover course routing, ESCO validators, controller conformance, injected ladder defects, incident evidence, room isolation, unique multiplayer roles, reconnect recovery, shared scoring, 3D rendering, map controls, and a complete two-client incident.
+
+## Project map
 
 ```text
-js/main.js            browser/game bootstrap and UI wiring
-js/campaign.js        continuous apprenticeship and physical routing
-js/course.js          12-week story and assignment data
-js/world.js           full procedural Plant 7 world
-js/game.js            alarm call state machine, tiers, scoring, and debriefs
-js/esco.js            ESCO workspace integration and practical validation
-js/data/plant-logic.js  the real PGP_Plant7_PLC ladder: 5 programs, 16 routines
-js/plc.js             ladder scan engine that solves it against the simulation
-js/plant7-esco.js     the same controller emitted as an ESCO studio project
-js/multiplayer.js     lobby, room client, role workflows, and remote avatars
-server/rooms.mjs      authoritative rooms, incidents, permissions, and scoring
-server/multiplayer-server.mjs  HTTP/WebSocket LAN host
-js/data/scenarios.js  ten production fault scenarios and radio evidence
-                      (process behaviour and story only — never ladder logic)
+index.html                       application shell and game overlays
+css/style.css                    HUD, ESCO, course, multiplayer, and map UI
+js/main.js                       browser bootstrap, input, camera, and UI wiring
+js/world.js                      Plant 7 world, architecture, materials, and routing
+js/campaign.js                   continuous apprenticeship progression
+js/course.js                     12-week work orders and assignment data
+js/game.js                       incident state, escalation, score, and debriefs
+js/esco.js                       ESCO workspace integration and validation
+js/plc.js                        ladder scan engine
+js/data/plant-logic.js           PGP_Plant7_PLC controller definition
+js/plant7-esco.js                controller-to-ESCO project generation
+js/multiplayer.js                room client, roles, and shared gameplay
+server/rooms.mjs                 authoritative room and incident state
+server/multiplayer-server.mjs    HTTP and WebSocket LAN server
+tests/                           controller, campaign, multiplayer, and browser QA
+assets/                          local PBR materials, architecture, and vegetation
 ```
+
+## Asset licensing
+
+AlarmState source code is available under the [MIT License](LICENSE).
+
+The PBR textures, modular factory facade, and vegetation source used by the Plant 7 world are CC0 assets from Poly Haven. Source and usage notes are stored beside the assets:
+
+- [PBR texture attribution](assets/textures/polyhaven/README.md)
+- [Architecture attribution](assets/models/polyhaven/README.md)
+- [Vegetation attribution](assets/vegetation/polyhaven/README.md)
+
+## Safety scope
+
+AlarmState is a simulation and training game. It does not connect to real PLCs, industrial networks, field devices, machinery, or external hardware. Do not use the game as a substitute for site-specific procedures, qualified supervision, or applicable electrical and process-safety standards.

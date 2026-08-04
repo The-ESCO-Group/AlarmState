@@ -2,6 +2,8 @@
 // 3D plant world — Prairie Gold Processing Plant 7
 // ============================================================================
 import * as THREE from 'three';
+import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
+import { GLTFLoader } from '../vendor/GLTFLoader.js';
 
 function seededRandom(seed) {
   let value = seed >>> 0;
@@ -109,40 +111,82 @@ const TX = {
   painted: surfaceTexture('painted', '#7b8388', '#d5d8d5', [4, 4], 26),
 };
 
+const textureLoader = new THREE.TextureLoader();
+function pbrTexture(slug, suffix, repeat, color = false) {
+  const texture = textureLoader.load(`assets/textures/polyhaven/${slug}_${suffix}_1k.jpg`);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeat[0], repeat[1]);
+  texture.anisotropy = 8;
+  if (color) texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function pbrSet(slug, repeat, metal = false) {
+  return {
+    map: pbrTexture(slug, 'diff', repeat, true),
+    normalMap: pbrTexture(slug, 'nor_gl', repeat),
+    roughnessMap: pbrTexture(slug, 'rough', repeat),
+    ...(metal ? { metalnessMap: pbrTexture(slug, 'metal', repeat) } : {}),
+  };
+}
+
+const PBR = {
+  corrugated: pbrSet('corrugated_iron', [5, 4], true),
+  concrete: pbrSet('concrete_floor_worn_001', [7, 7]),
+  asphalt: pbrSet('clean_asphalt', [12, 12]),
+  bitumen: pbrSet('bitumen', [8, 6]),
+  grass: pbrSet('leafy_grass', [18, 18]),
+};
+
+function pbrMaterial(set, options) {
+  const { normalStrength = 0.7, ...materialOptions } = options;
+  const material = new THREE.MeshStandardMaterial({ ...set, ...materialOptions });
+  material.normalScale = new THREE.Vector2(normalStrength, normalStrength);
+  return material;
+}
+
 const M = {
   steel:    new THREE.MeshStandardMaterial({ map: TX.painted, color: 0xb8bec1, roughness: 0.48, metalness: 0.68 }),
   steelDk:  new THREE.MeshStandardMaterial({ map: TX.painted, color: 0x5d6468, roughness: 0.54, metalness: 0.64 }),
-  tankWhite:new THREE.MeshStandardMaterial({ map: TX.whiteMetal, color: 0xf0f1ed, roughness: 0.57, metalness: 0.36 }),
-  tankTan:  new THREE.MeshStandardMaterial({ map: TX.tanMetal, color: 0xe1d3aa, roughness: 0.64, metalness: 0.22 }),
+  tankWhite:pbrMaterial(PBR.corrugated, { color: 0xf1f1eb, roughness: 0.64, metalness: 0.58, normalStrength: 0.82 }),
+  tankTan:  pbrMaterial(PBR.corrugated, { color: 0xd7c9a8, roughness: 0.7, metalness: 0.34, normalStrength: 0.72 }),
   pipe:     new THREE.MeshStandardMaterial({ color: 0x9aa3ab, roughness: 0.4, metalness: 0.7 }),
   pipeYel:  new THREE.MeshStandardMaterial({ color: 0xc8a818, roughness: 0.5, metalness: 0.4 }),
   pipeGrn:  new THREE.MeshStandardMaterial({ color: 0x2f7d4f, roughness: 0.5, metalness: 0.4 }),
-  concrete: new THREE.MeshStandardMaterial({ map: TX.concrete, color: 0xf2f1ea, roughness: 0.97, metalness: 0 }),
-  asphalt:  new THREE.MeshStandardMaterial({ map: TX.asphalt, color: 0xb8babc, roughness: 1, metalness: 0 }),
-  wallTan:  new THREE.MeshStandardMaterial({ map: TX.tanMetal, color: 0xf5ead3, roughness: 0.8, metalness: 0.16 }),
-  wallBlue: new THREE.MeshStandardMaterial({ map: TX.blueMetal, color: 0xc5d8dd, roughness: 0.76, metalness: 0.22 }),
-  roof:     new THREE.MeshStandardMaterial({ map: TX.roof, color: 0xd4d7d7, roughness: 0.82, metalness: 0.34 }),
+  concrete: pbrMaterial(PBR.concrete, { color: 0xdad8cf, roughness: 0.96, metalness: 0, normalStrength: 0.72 }),
+  asphalt:  pbrMaterial(PBR.asphalt, { color: 0x777a7a, roughness: 0.98, metalness: 0, normalStrength: 0.8 }),
+  wallTan:  pbrMaterial(PBR.corrugated, { color: 0xd8cdb6, roughness: 0.78, metalness: 0.26, normalStrength: 0.8 }),
+  wallBlue: pbrMaterial(PBR.corrugated, { color: 0x9eb1b5, roughness: 0.72, metalness: 0.34, normalStrength: 0.82 }),
+  roof:     pbrMaterial(PBR.bitumen, { color: 0xa4a7a5, roughness: 0.94, metalness: 0, normalStrength: 0.62 }),
   motor:    new THREE.MeshStandardMaterial({ color: 0x2a5a9a, roughness: 0.45, metalness: 0.5 }),
   motorRed: new THREE.MeshStandardMaterial({ color: 0x9a2a2a, roughness: 0.45, metalness: 0.5 }),
   yellow:   new THREE.MeshStandardMaterial({ color: 0xd8b020, roughness: 0.6, metalness: 0.3 }),
   dirt:     new THREE.MeshStandardMaterial({ color: 0x6a6a55, roughness: 1 }),
   glassDk:  new THREE.MeshStandardMaterial({ color: 0x16202a, roughness: 0.2, metalness: 0.6 }),
-  screenOn: new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x2a5a8a, emissiveIntensity: 1.2, roughness: 0.3 }),
-  screenEng:new THREE.MeshStandardMaterial({ color: 0xc8ffc8, emissive: 0x1a6a2a, emissiveIntensity: 1.1, roughness: 0.3 }),
+  screenOn: new THREE.MeshStandardMaterial({ color: 0x315865, emissive: 0x1e5368, emissiveIntensity: 0.62, roughness: 0.28 }),
+  screenEng:new THREE.MeshStandardMaterial({ color: 0x294f3b, emissive: 0x165b36, emissiveIntensity: 0.58, roughness: 0.28 }),
   light:    new THREE.MeshStandardMaterial({ color: 0xfff5d9, emissive: 0xffe8b5, emissiveIntensity: 2.8, roughness: 0.25 }),
   rust:     new THREE.MeshStandardMaterial({ color: 0x7a5238, roughness: 0.9, metalness: 0.2 }),
   cardboard:new THREE.MeshStandardMaterial({ color: 0xb98b4e, roughness: 0.82, metalness: 0 }),
-  wallWhite:new THREE.MeshStandardMaterial({ map: TX.whiteMetal, color: 0xe9ede8, roughness: 0.72, metalness: 0.2 }),
-  wallGreen:new THREE.MeshStandardMaterial({ map: TX.greenMetal, color: 0xd8ebe3, roughness: 0.72, metalness: 0.22 }),
+  wallWhite:pbrMaterial(PBR.corrugated, { color: 0xe8e9e3, roughness: 0.7, metalness: 0.38, normalStrength: 0.82 }),
+  wallGreen:pbrMaterial(PBR.corrugated, { color: 0x789084, roughness: 0.74, metalness: 0.3, normalStrength: 0.8 }),
   safety:   new THREE.MeshStandardMaterial({ color: 0xe6aa16, roughness: 0.48, metalness: 0.35 }),
   safetyRed:new THREE.MeshStandardMaterial({ color: 0xb32b24, roughness: 0.5, metalness: 0.25 }),
   epoxy:    new THREE.MeshStandardMaterial({ color: 0x61747a, roughness: 0.72, metalness: 0.08 }),
-  gravel:   new THREE.MeshStandardMaterial({ map: TX.gravel, color: 0xb5b2a5, roughness: 1, metalness: 0 }),
-  grass:    new THREE.MeshStandardMaterial({ map: TX.grass, color: 0xc4d0b1, roughness: 1, metalness: 0 }),
+  gravel:   pbrMaterial(PBR.concrete, { color: 0x9d9a8e, roughness: 1, metalness: 0, normalStrength: 1 }),
+  grass:    pbrMaterial(PBR.grass, { color: 0x849174, roughness: 1, metalness: 0, normalStrength: 0.58 }),
   lineWhite:new THREE.MeshBasicMaterial({ color: 0xe8e6d8 }),
   lineYel:  new THREE.MeshBasicMaterial({ color: 0xe4b526 }),
   glass:    new THREE.MeshStandardMaterial({ color: 0x42677a, roughness: 0.18, metalness: 0.35, transparent: true, opacity: 0.82 }),
-  roofBlue: new THREE.MeshStandardMaterial({ map: TX.roof, color: 0xb6d0da, roughness: 0.65, metalness: 0.5 }),
+  roofBlue: pbrMaterial(PBR.corrugated, { color: 0x9eafb2, roughness: 0.64, metalness: 0.48, normalStrength: 0.72 }),
+  fieldA:   pbrMaterial(PBR.grass, { color: 0x718258, roughness: 1, metalness: 0, normalStrength: 0.5 }),
+  fieldB:   pbrMaterial(PBR.grass, { color: 0x97915e, roughness: 1, metalness: 0, normalStrength: 0.45 }),
+  soil:     new THREE.MeshStandardMaterial({ color: 0x695f48, roughness: 1, metalness: 0 }),
+  water:    new THREE.MeshStandardMaterial({ color: 0x587f87, roughness: 0.3, metalness: 0.08 }),
+  grime:    new THREE.MeshStandardMaterial({ color: 0x3d342c, roughness: 1, transparent: true, opacity: 0.34, depthWrite: false }),
+  fadedRust:new THREE.MeshStandardMaterial({ color: 0x76503c, roughness: 0.95, transparent: true, opacity: 0.42, depthWrite: false }),
+  worktop:  pbrMaterial(PBR.bitumen, { color: 0x555b5c, roughness: 0.9, metalness: 0.05, normalStrength: 0.34 }),
+  keyboard: new THREE.MeshStandardMaterial({ color: 0x24292b, roughness: 0.78, metalness: 0.08 }),
 };
 
 function box(w, h, d, mat, x, y, z, ry = 0) {
@@ -151,6 +195,308 @@ function box(w, h, d, mat, x, y, z, ry = 0) {
   m.castShadow = h > 1 && (w * d > 2 || w > 6 || d > 6);
   m.receiveShadow = true;
   return m;
+}
+
+function bevelBox(w, h, d, mat, x, y, z, ry = 0, bevel = 0.18) {
+  const edge = Math.min(bevel, w * 0.08, h * 0.08, d * 0.08);
+  const sw = Math.max(0.05, w - edge * 2), sh = Math.max(0.05, h - edge * 2);
+  const shape = new THREE.Shape();
+  shape.moveTo(-sw / 2, -sh / 2);
+  shape.lineTo(sw / 2, -sh / 2);
+  shape.lineTo(sw / 2, sh / 2);
+  shape.lineTo(-sw / 2, sh / 2);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: Math.max(0.05, d - edge * 2), bevelEnabled: true,
+    bevelThickness: edge, bevelSize: edge, bevelSegments: 2, steps: 1,
+  });
+  geometry.center();
+  const mesh = new THREE.Mesh(geometry, mat);
+  mesh.position.set(x, y, z); mesh.rotation.y = ry;
+  mesh.castShadow = h > 1; mesh.receiveShadow = true;
+  return mesh;
+}
+
+function gablePanel(span, rise, depth, mat, x, y, z, ry = 0) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-span / 2, -rise / 2);
+  shape.lineTo(span / 2, -rise / 2);
+  shape.lineTo(0, rise / 2);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth, bevelEnabled: false, steps: 1,
+  });
+  geometry.center();
+  const mesh = new THREE.Mesh(geometry, mat);
+  mesh.position.set(x, y, z); mesh.rotation.y = ry;
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  return mesh;
+}
+
+function preEngineeredBuilding(g, options) {
+  const {
+    x, z, w, d, eave, rise = Math.min(5, d * 0.18),
+    wall = M.wallWhite, roof = M.roofBlue,
+    bay = 6, doorBays = [], vents = true,
+  } = options;
+  const frameCount = Math.max(3, Math.round(w / bay));
+  const frameBay = w / frameCount;
+  const sideCount = Math.max(3, Math.round(d / bay));
+  const sideBay = d / sideCount;
+  const doorSet = new Set(doorBays);
+  const doorHeight = Math.min(5.2, eave * 0.64);
+  const roofAngle = Math.atan2(rise, d / 2);
+  const roofSlope = Math.hypot(d / 2, rise);
+
+  g.add(box(w + 0.8, 0.45, d + 0.8, M.concrete, x, 0.23, z));
+  for (let index = 0; index < frameCount; index++) {
+    const px = x - w / 2 + frameBay * (index + 0.5);
+    if (doorSet.has(index)) {
+      const upperHeight = eave - doorHeight;
+      g.add(box(frameBay - 0.08, upperHeight, 0.16, wall, px, doorHeight + upperHeight / 2, z - d / 2));
+      g.add(bevelBox(frameBay - 0.72, doorHeight - 0.24, 0.18, M.steelDk, px, doorHeight / 2, z - d / 2 - 0.11, 0, 0.08));
+      g.add(box(frameBay - 1.0, doorHeight - 0.52, 0.05, M.wallBlue, px, doorHeight / 2, z - d / 2 - 0.22));
+      for (let y = 0.75; y < doorHeight; y += 0.72) g.add(box(frameBay - 1.12, 0.045, 0.035, M.steelDk, px, y, z - d / 2 - 0.26));
+      for (const offset of [-frameBay * 0.37, frameBay * 0.37]) g.add(box(0.34, 0.5, 0.42, M.glassDk, px + offset, 0.48, z - d / 2 - 0.45));
+    } else {
+      g.add(box(frameBay - 0.05, eave, 0.16, wall, px, eave / 2, z - d / 2));
+    }
+    g.add(box(frameBay - 0.05, eave, 0.16, wall, px, eave / 2, z + d / 2));
+  }
+  for (let index = 0; index < sideCount; index++) {
+    const pz = z - d / 2 + sideBay * (index + 0.5);
+    g.add(box(0.16, eave, sideBay - 0.05, wall, x - w / 2, eave / 2, pz));
+    g.add(box(0.16, eave, sideBay - 0.05, wall, x + w / 2, eave / 2, pz));
+  }
+  g.add(gablePanel(d, rise, 0.16, wall, x - w / 2, eave + rise / 2, z, Math.PI / 2));
+  g.add(gablePanel(d, rise, 0.16, wall, x + w / 2, eave + rise / 2, z, Math.PI / 2));
+
+  for (let index = 0; index <= frameCount; index++) {
+    const px = x - w / 2 + index * frameBay;
+    for (const edgeZ of [-1, 1]) {
+      g.add(box(0.46, eave, 0.24, M.steelDk, px, eave / 2, z + edgeZ * (d / 2 - 0.12)));
+    }
+    for (const edgeZ of [-1, 1]) {
+      const rafter = box(0.32, 0.26, roofSlope + 0.18, M.steelDk, px, eave + rise / 2, z + edgeZ * d / 4);
+      rafter.rotation.x = edgeZ > 0 ? roofAngle : -roofAngle; g.add(rafter);
+    }
+  }
+
+  for (const edgeZ of [-1, 1]) {
+    const panel = box(w + 1.2, 0.24, roofSlope + 0.9, roof, x, eave + rise / 2 + 0.18, z + edgeZ * d / 4);
+    panel.rotation.x = edgeZ > 0 ? roofAngle : -roofAngle; g.add(panel);
+    g.add(box(w + 1.2, 0.15, 0.18, M.steelDk, x, eave + 0.05, z + edgeZ * (d / 2 + 0.45)));
+    for (const px of [x - w / 2 + 0.45, x + w / 2 - 0.45]) {
+      g.add(cyl(0.08, 0.11, eave - 0.35, M.steelDk, px, (eave - 0.35) / 2, z + edgeZ * (d / 2 + 0.43), 10));
+    }
+  }
+  g.add(box(w + 1.35, 0.18, 0.48, M.steel, x, eave + rise + 0.22, z));
+  if (vents) {
+    for (let px = x - w * 0.34; px <= x + w * 0.34; px += Math.max(9, w / 5)) roofVent(g, px, eave + rise + 0.32, z, 0.95);
+  }
+}
+
+function processTower(g, options) {
+  const { x, z, w, d, h, wall = M.wallWhite, floors = 6 } = options;
+  const levelHeight = h / floors;
+  g.add(box(w + 1.2, 0.7, d + 1.2, M.concrete, x, 0.35, z));
+
+  for (const px of [x - w / 2, x, x + w / 2]) for (const pz of [z - d / 2, z + d / 2]) {
+    g.add(box(0.44, h, 0.44, M.steelDk, px, h / 2, pz));
+  }
+  for (let level = 0; level <= floors; level++) {
+    const y = level * levelHeight;
+    g.add(box(w + 0.55, 0.35, 0.42, M.steelDk, x, y, z - d / 2));
+    g.add(box(w + 0.55, 0.35, 0.42, M.steelDk, x, y, z + d / 2));
+    g.add(box(0.42, 0.35, d + 0.55, M.steelDk, x - w / 2, y, z));
+    g.add(box(0.42, 0.35, d + 0.55, M.steelDk, x + w / 2, y, z));
+    if (level > 0 && level < floors) g.add(box(w - 0.65, 0.18, d - 0.65, M.concrete, x, y, z));
+  }
+
+  for (let level = 0; level < floors; level++) {
+    const y = level * levelHeight + levelHeight / 2;
+    const panelHeight = levelHeight - 0.44;
+    for (let bayIndex = 0; bayIndex < 2; bayIndex++) {
+      const px = x - w / 4 + bayIndex * w / 2;
+      const openFront = (level + bayIndex) % 5 === 1;
+      if (!openFront) g.add(box(w / 2 - 0.48, panelHeight, 0.16, wall, px, y, z - d / 2 - 0.02));
+      g.add(box(w / 2 - 0.48, panelHeight, 0.16, wall, px, y, z + d / 2 + 0.02));
+    }
+    for (let bayIndex = 0; bayIndex < 2; bayIndex++) {
+      const pz = z - d / 4 + bayIndex * d / 2;
+      g.add(box(0.16, panelHeight, d / 2 - 0.48, wall, x - w / 2 - 0.02, y, pz));
+      if ((level + bayIndex) % 4 !== 2) g.add(box(0.16, panelHeight, d / 2 - 0.48, wall, x + w / 2 + 0.02, y, pz));
+    }
+    if (level % 2 === 0) louverBank(g, x, y, z - d / 2 - 0.14, w * 0.42, Math.min(1.45, panelHeight * 0.52), 0, M.steelDk);
+  }
+
+  for (const level of [2, 4]) {
+    const y = level * levelHeight + 0.25;
+    catwalk(g, x + w / 2 + 1.1, z, d + 2.2, 1.05, y, Math.PI / 2);
+  }
+  g.add(box(w + 1.0, 0.5, d + 1.0, M.roofBlue, x, h + 0.25, z));
+  for (const px of [x - w * 0.27, x + w * 0.27]) roofVent(g, px, h + 0.62, z, 1.05);
+  ladder(g, x + w / 2 + 0.25, z + d * 0.34, h - 0.5, 0.42, Math.PI / 2, true);
+}
+
+function loadBrickFactoryOffice(root, x, z) {
+  const loader = new GLTFLoader();
+  const assetPath = 'assets/models/polyhaven/modular_factory_facade/modular_factory_facade_1k.gltf';
+  return loader.loadAsync(assetPath).then(({ scene }) => {
+    const building = new THREE.Group();
+    building.name = 'RealMasonryAdministration';
+    const placements = new Map();
+    const queuePart = (name, px, py, pz, ry) => {
+      if (!placements.has(name)) placements.set(name, []);
+      placements.get(name).push({ px, py, pz, ry });
+    };
+    const queueModule = (kind, px, py, pz, ry) => {
+      const moduleParts = {
+        solid: ['wall_standard_standard_01'],
+        window: ['wall_window_centered_large_01', 'window_centered_large_01'],
+        door: ['wall_door_centered_small_01', 'door_centered_small_01'],
+      }[kind];
+      for (const part of moduleParts) queuePart(part, px, py, pz, ry);
+    };
+    const wallRun = (startX, startZ, dirX, dirZ, count, level, pattern) => {
+      const ry = Math.atan2(-dirZ, dirX);
+      for (let index = 0; index < count; index++) {
+        const kind = pattern(index, level);
+        queueModule(kind, startX + dirX * 3 * (index + 1), level * 3 + 0.42, startZ + dirZ * 3 * (index + 1), ry);
+      }
+    };
+
+    for (let level = 0; level < 2; level++) {
+      wallRun(x - 19.5, z - 9, 1, 0, 13, level, (index, floor) => floor === 0 && index === 6 ? 'door' : index % 3 === 1 ? 'solid' : 'window');
+      wallRun(x + 19.5, z + 9, -1, 0, 13, level, (index) => index % 2 ? 'solid' : 'window');
+      wallRun(x - 19.5, z + 9, 0, -1, 6, level, (index) => index % 2 ? 'window' : 'solid');
+      wallRun(x + 19.5, z - 9, 0, 1, 6, level, (index) => index % 2 ? 'window' : 'solid');
+    }
+
+    for (const [name, transforms] of placements) {
+      const source = scene.getObjectByName(name);
+      if (!source?.isMesh) continue;
+      const materials = Array.isArray(source.material) ? source.material : [source.material];
+      for (const material of materials) {
+        material.side = THREE.DoubleSide;
+        material.envMapIntensity = 0.8;
+      }
+      const instances = new THREE.InstancedMesh(source.geometry, source.material, transforms.length);
+      const matrix = new THREE.Matrix4();
+      for (let index = 0; index < transforms.length; index++) {
+        const transform = transforms[index];
+        matrix.compose(
+          new THREE.Vector3(transform.px, transform.py, transform.pz),
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), transform.ry),
+          new THREE.Vector3(1, 1, 1),
+        );
+        instances.setMatrixAt(index, matrix);
+      }
+      instances.castShadow = true; instances.receiveShadow = true;
+      building.add(instances);
+    }
+
+    building.add(box(40.4, 0.48, 19.2, M.concrete, x, 0.24, z));
+    building.add(box(40.2, 0.28, 19.2, M.roof, x, 6.52, z));
+    for (const edgeZ of [-1, 1]) building.add(box(40.6, 0.65, 0.38, M.steelDk, x, 6.56, z + edgeZ * 9.25));
+    for (const edgeX of [-1, 1]) building.add(box(0.38, 0.65, 19.2, M.steelDk, x + edgeX * 19.75, 6.56, z));
+    building.add(box(11.8, 0.34, 4.5, M.steelDk, x, 3.6, z - 11.05));
+    for (const px of [x - 5.3, x + 5.3]) building.add(box(0.32, 3.6, 0.32, M.steelDk, px, 1.8, z - 12.9));
+    for (const px of [x - 11, x + 8]) {
+      building.add(box(4.2, 0.65, 2.5, M.steelDk, px, 6.94, z));
+      building.add(cyl(0.42, 0.52, 0.7, M.steel, px, 7.62, z, 14));
+    }
+    root.add(building);
+    return building;
+  }).catch((error) => {
+    console.error('Factory architecture failed to load', error);
+    preEngineeredBuilding(root, { x, z, w: 40, d: 19, eave: 7, rise: 2.6, wall: M.wallWhite, doorBays: [3] });
+    return null;
+  });
+}
+
+function weatherSilo(g, x, z, radius, h) {
+  const streakAngles = [-2.75, -2.35, -1.95, -1.55, -1.15, -0.75, -0.35, 0.2, 0.7, 1.15];
+  for (let i = 0; i < streakAngles.length; i++) {
+    const angle = streakAngles[i];
+    const strip = box(0.16 + (i % 3) * 0.08, h * (0.32 + (i % 4) * 0.08), 0.025, i % 4 === 0 ? M.fadedRust : M.grime, 0, h * 0.7, 0);
+    strip.position.x = x + Math.sin(angle) * (radius + 0.025);
+    strip.position.z = z + Math.cos(angle) * (radius + 0.025);
+    strip.rotation.y = angle;
+    g.add(strip);
+  }
+  const doorZ = z - radius - 0.08;
+  g.add(bevelBox(1.8, 2.8, 0.18, M.steelDk, x, 1.4, doorZ, 0, 0.08));
+  g.add(box(1.35, 2.3, 0.05, M.wallBlue, x, 1.4, doorZ - 0.11));
+  g.add(cyl(0.07, 0.07, 0.35, M.safety, x + 0.52, 1.35, doorZ - 0.18, 10));
+  for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 12) {
+    const rimX = x + Math.sin(angle) * (radius - 0.2);
+    const rimZ = z + Math.cos(angle) * (radius - 0.2);
+    pipeRun(g, [[x, h + 4.55, z], [rimX, h + 0.35, rimZ]], 0.035, M.steelDk);
+  }
+  for (const side of [-1, 1]) {
+    pipeRun(g, [[x + side * 3.2, 0.8, z - radius], [x + side * 3.2, 0.8, z - radius - 3.4]], 0.16, M.pipe);
+    valveUnit(g, x + side * 3.2, 0.8, z - radius - 2.1, Math.PI / 2);
+  }
+}
+
+function mergeStaticWorldGeometry(group, dynamicRoots = []) {
+  const dynamic = new Set(dynamicRoots.filter(Boolean));
+  const isDynamic = (object) => {
+    for (let current = object; current; current = current.parent) {
+      if (dynamic.has(current)) return true;
+      if (current === group) break;
+    }
+    return false;
+  };
+
+  group.updateWorldMatrix(true, true);
+  const buckets = new Map();
+  const originals = [];
+  group.traverse((object) => {
+    if (!object.isMesh || isDynamic(object) || Array.isArray(object.material)) return;
+    const material = object.material;
+    if (material.transparent && material !== M.grime && material !== M.fadedRust) return;
+    const geometry = object.geometry.clone();
+    geometry.applyMatrix4(object.matrixWorld);
+    geometry.clearGroups();
+    if (!buckets.has(material)) buckets.set(material, new Map());
+    const topology = geometry.index ? 'indexed' : 'non-indexed';
+    const materialBuckets = buckets.get(material);
+    if (!materialBuckets.has(topology)) materialBuckets.set(topology, { geometries: [], castShadow: false, receiveShadow: false });
+    const bucket = materialBuckets.get(topology);
+    bucket.geometries.push(geometry);
+    bucket.castShadow ||= object.castShadow;
+    bucket.receiveShadow ||= object.receiveShadow;
+    originals.push(object);
+  });
+
+  for (const object of originals) {
+    object.parent?.remove(object);
+    object.geometry.dispose();
+  }
+
+  let mergedCount = 0;
+  for (const [material, materialBuckets] of buckets) {
+    for (const bucket of materialBuckets.values()) {
+      const chunkSize = 256;
+      for (let offset = 0; offset < bucket.geometries.length; offset += chunkSize) {
+        const sources = bucket.geometries.slice(offset, offset + chunkSize);
+        const geometry = mergeGeometries(sources, false);
+        for (const source of sources) source.dispose();
+        if (!geometry) continue;
+        geometry.computeBoundingBox();
+        geometry.computeBoundingSphere();
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = `Static batch ${mergedCount + 1}`;
+        mesh.castShadow = bucket.castShadow;
+        mesh.receiveShadow = bucket.receiveShadow;
+        group.add(mesh);
+        mergedCount += 1;
+      }
+    }
+  }
+  return mergedCount;
 }
 function cyl(rt, rb, h, mat, x, y, z, seg = 20) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
@@ -165,6 +511,12 @@ function hcyl(r, len, mat, x, y, z, ry = 0) {
   m.castShadow = r > 0.5 && len > 2;
   m.receiveShadow = true;
   return m;
+}
+
+function roadSegment(g, x1, z1, x2, z2, width = 9, y = 0.012) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const length = Math.hypot(dx, dz);
+  g.add(box(length, 0.035, width, M.asphalt, (x1 + x2) / 2, y, (z1 + z2) / 2, -Math.atan2(dz, dx)));
 }
 // pipe run along points
 function pipeRun(group, pts, r = 0.12, mat = M.pipe) {
@@ -274,19 +626,6 @@ function conveyorGallery(g, x1, z1, x2, z2, y = 10) {
     const x = x1 + dx * t, z = z1 + dz * t;
     g.add(box(0.35, y - 0.7, 0.35, M.steelDk, x, (y - 0.7) / 2, z));
   }
-}
-
-function truckUnit(g, x, z, ry = 0, color = M.wallWhite) {
-  const u = new THREE.Group();
-  u.add(box(2.5, 2.3, 6.8, color, 0, 1.45, 0));
-  u.add(box(2.35, 2.2, 2.7, M.wallBlue, 0, 1.4, -4.65));
-  u.add(box(2.05, 0.8, 0.06, M.glass, 0, 2.0, -6.02));
-  for (const wz of [-5.0, -2.2, 2.2]) for (const wx of [-1.22, 1.22]) {
-    const wheel = cyl(0.45, 0.45, 0.3, M.glassDk, wx, 0.48, wz, 12);
-    wheel.rotation.z = Math.PI / 2; u.add(wheel);
-  }
-  u.position.set(x, 0, z); u.rotation.y = ry; g.add(u);
-  return u;
 }
 
 function catwalk(g, x, z, w, d, y, ry = 0, opts = {}) {
@@ -433,9 +772,9 @@ export function buildWorld(scene) {
 
   // ---------- sky / light / ground ----------
   scene.background = new THREE.Color(0xb9c9cf);
-  scene.fog = new THREE.Fog(0xb9c9cf, 145, 470);
+  scene.fog = new THREE.Fog(0xb9c9cf, 170, 620);
   const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(520, 32, 16),
+    new THREE.SphereGeometry(700, 32, 16),
     new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
@@ -460,35 +799,67 @@ export function buildWorld(scene) {
   sun.shadow.bias = -0.00025;
   scene.add(sun);
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(410, 410), M.grass);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(680, 560), M.grass);
   ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // A low Midwest tree line keeps the plant grounded without competing with the process silhouette.
-  const treeCount = 92;
-  const treeCrowns = new THREE.InstancedMesh(
-    new THREE.ConeGeometry(1.1, 4.6, 7),
-    new THREE.MeshStandardMaterial({ color: 0x3f5438, roughness: 1 }),
-    treeCount,
-  );
-  const treeTrunks = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(0.14, 0.2, 2.0, 6),
-    new THREE.MeshStandardMaterial({ color: 0x5d4d3e, roughness: 1 }),
-    treeCount,
-  );
-  const treeRandom = seededRandom(97), matrix = new THREE.Matrix4();
-  for (let i = 0; i < treeCount; i++) {
-    const edge = i % 3;
-    const x = edge === 0 ? -178 + treeRandom() * 356 : (edge === 1 ? -180 : 180);
-    const z = edge === 0 ? 178 + treeRandom() * 8 : -175 + treeRandom() * 350;
-    const scale = 0.65 + treeRandom() * 0.8;
-    matrix.compose(new THREE.Vector3(x, 3.7 * scale, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
-    treeCrowns.setMatrixAt(i, matrix);
-    matrix.compose(new THREE.Vector3(x, 1.0 * scale, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
-    treeTrunks.setMatrixAt(i, matrix);
+  // The playable plant sits inside a wider agricultural landscape, matching the
+  // scale and isolation of a real Midwest processing campus.
+  for (const [x, z, w, d, mat] of [
+    [-275, 0, 118, 500, M.fieldA], [275, 0, 118, 500, M.fieldB],
+    [0, 235, 440, 86, M.fieldB], [0, -235, 440, 86, M.soil],
+  ]) {
+    const field = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    field.rotation.x = -Math.PI / 2; field.position.set(x, -0.008, z); field.receiveShadow = true;
+    scene.add(field);
   }
-  treeCrowns.receiveShadow = true; scene.add(treeCrowns); scene.add(treeTrunks);
+  for (let x = -214; x <= 214; x += 7) {
+    scene.add(box(0.09, 0.012, 82, M.fieldA, x, 0.005, 235));
+    scene.add(box(0.09, 0.012, 82, M.fieldB, x + 2.2, 0.005, -235));
+  }
+  const pond = new THREE.Mesh(new THREE.CircleGeometry(23, 48), M.water);
+  pond.rotation.x = -Math.PI / 2; pond.position.set(252, 0.008, 126); scene.add(pond);
+  const pondBank = new THREE.Mesh(new THREE.RingGeometry(23, 26, 48), M.grass);
+  pondBank.rotation.x = -Math.PI / 2; pondBank.position.set(252, 0.004, 126); scene.add(pondBank);
+
+  // Real scanned vegetation billboards replace the former cone placeholders.
+  const treeCount = 112;
+  const treeTexture = textureLoader.load('assets/vegetation/polyhaven/jacaranda_tree_billboard.png');
+  treeTexture.colorSpace = THREE.SRGBColorSpace;
+  treeTexture.anisotropy = 8;
+  const treeGeometry = new THREE.PlaneGeometry(7.0, 5.5);
+  treeGeometry.translate(0, 2.75, 0);
+  const treeMaterial = new THREE.MeshStandardMaterial({
+    map: treeTexture, alphaTest: 0.32, side: THREE.DoubleSide,
+    roughness: 0.96, metalness: 0,
+  });
+  const treePositions = [];
+  const treeRandom = seededRandom(97);
+  for (let i = 0; i < treeCount; i++) {
+    const edge = i % 4;
+    const along = -265 + treeRandom() * 530;
+    const x = edge < 2 ? along : (edge === 2 ? -222 - treeRandom() * 18 : 222 + treeRandom() * 18);
+    const z = edge === 0 ? 202 + treeRandom() * 24 : (edge === 1 ? -202 - treeRandom() * 24 : along);
+    treePositions.push([x, z, 0.72 + treeRandom() * 0.72, treeRandom() * Math.PI]);
+  }
+  for (const [x, z] of [[16, -172], [27, -172], [48, -172], [60, -172], [82, -163], [82, -145], [82, -128]]) {
+    treePositions.push([x, z, 0.72 + treeRandom() * 0.2, treeRandom() * Math.PI]);
+  }
+  const treeBillboards = new THREE.InstancedMesh(treeGeometry, treeMaterial, treePositions.length * 2);
+  const treeMatrix = new THREE.Matrix4();
+  const treeQuaternion = new THREE.Quaternion();
+  const treeAxis = new THREE.Vector3(0, 1, 0);
+  let treeIndex = 0;
+  for (const [x, z, scale, angle] of treePositions) {
+    for (const rotation of [angle, angle + Math.PI / 2]) {
+      treeQuaternion.setFromAxisAngle(treeAxis, rotation);
+      treeMatrix.compose(new THREE.Vector3(x, 0, z), treeQuaternion, new THREE.Vector3(scale, scale, scale));
+      treeBillboards.setMatrixAt(treeIndex++, treeMatrix);
+    }
+  }
+  treeBillboards.name = 'Scanned perimeter vegetation';
+  scene.add(treeBillboards);
 
   // roads
   const roadNS = new THREE.Mesh(new THREE.PlaneGeometry(11, 370), M.asphalt);
@@ -570,10 +941,26 @@ export function buildWorld(scene) {
       controlLight.position.set(x, 3.05, cz); g.add(controlLight);
       g.add(box(3.2, 0.07, 0.42, M.light, x, 3.25, cz));
     }
-    // ESCO engineering workstation — corner desk
-    g.add(box(2.6, 0.9, 1.2, M.rust, cx + 7.6, 0.45, cz - 3.4));
-    g.add(box(1.6, 1.0, 0.12, M.glassDk, cx + 7.6, 1.55, cz - 3.0));
-    g.add(box(1.45, 0.85, 0.04, M.screenEng, cx + 7.6, 1.55, cz - 2.93));
+    // ESCO engineering workstation — powder-coated industrial console.
+    const deskX = cx + 7.6, deskZ = cz - 3.4;
+    g.add(bevelBox(2.7, 0.12, 1.24, M.worktop, deskX, 0.94, deskZ, 0, 0.04));
+    for (const offset of [-0.93, 0.93]) {
+      g.add(bevelBox(0.62, 0.84, 1.02, M.steelDk, deskX + offset, 0.48, deskZ, 0, 0.06));
+      for (const drawerY of [0.32, 0.55, 0.78]) {
+        g.add(box(0.48, 0.025, 0.035, M.grime, deskX + offset, drawerY, deskZ - 0.53));
+      }
+    }
+    g.add(box(1.35, 0.52, 0.06, M.steelDk, deskX, 0.46, deskZ + 0.52));
+    g.add(bevelBox(1.12, 0.055, 0.36, M.keyboard, deskX, 1.03, deskZ - 0.17, 0, 0.025));
+    for (let keyX = -0.45; keyX <= 0.45; keyX += 0.15) {
+      g.add(box(0.09, 0.016, 0.035, M.steel, deskX + keyX, 1.07, deskZ - 0.29));
+      g.add(box(0.09, 0.016, 0.035, M.steel, deskX + keyX, 1.07, deskZ - 0.16));
+    }
+    g.add(cyl(0.055, 0.055, 0.48, M.steelDk, deskX, 1.22, deskZ + 0.28, 12));
+    g.add(bevelBox(0.72, 0.06, 0.42, M.steelDk, deskX, 0.99, deskZ + 0.28, 0, 0.03));
+    g.add(bevelBox(1.68, 1.06, 0.14, M.glassDk, deskX, 1.65, deskZ + 0.4, 0, 0.07));
+    g.add(box(1.45, 0.83, 0.025, M.screenEng, deskX, 1.65, deskZ + 0.32));
+    g.add(cyl(0.09, 0.09, 0.08, M.safetyRed, deskX + 1.06, 1.02, deskZ - 0.18, 16));
     const engLbl = makeLabel('ESCO ENGINEERING WORKSTATION', { border: '#3aff6a', fg: '#aaffcc', fs: 24, scale: 0.011 });
     engLbl.position.set(cx + 7.6, 2.4, cz - 3.2); g.add(engLbl);
     world.interactables.push({ type: 'eng', pos: new THREE.Vector3(cx + 7.6, 1.4, cz - 3.2), label: 'Open ESCO Live Controller Project' });
@@ -1085,15 +1472,9 @@ export function buildWorld(scene) {
     pad(ax, az, 72, 58);
     mapRect(ax, az, 72, 58, 'GRAIN RECEIVING', '#8d7c43');
 
-    // Truck dump and enclosed receiving pit.
-    g.add(box(30, 7.5, 16, M.wallTan, ax - 3, 3.75, az + 18));
-    g.add(box(31, 0.4, 17, M.roofBlue, ax - 3, 7.7, az + 18));
-    for (const x of [ax - 12, ax - 3, ax + 6]) {
-      g.add(box(6.8, 4.8, 0.28, M.steelDk, x, 2.4, az + 9.85));
-      g.add(box(6.1, 4.15, 0.12, M.glassDk, x, 2.35, az + 9.68));
-    }
+    // Truck dump and enclosed receiving pit use a three-bay portal-frame structure.
+    preEngineeredBuilding(g, { x: ax - 3, z: az + 18, w: 30, d: 16, eave: 7.2, rise: 2.6, wall: M.wallTan, bay: 10, doorBays: [0, 1, 2] });
     addCollider(ax - 3, az + 18, 30, 16);
-    for (const x of [ax - 13, ax - 3, ax + 7]) roofVent(g, x, 8.0, az + 18, 1.25);
     dustCollector(g, ax - 23, az + 18, 0, 0.9);
     pipeRun(g, [[ax - 18.2, 8.0, az + 18], [ax - 15, 8.0, az + 18], [ax - 15, 8.0, az + 12]], 0.46, M.pipe);
     g.add(box(34, 0.3, 7.5, M.roofBlue, ax - 3, 6.5, az + 8));
@@ -1101,23 +1482,12 @@ export function buildWorld(scene) {
     const dumpLabel = makeLabel('SOYBEAN RECEIVING / DUST CONTROL ACTIVE', { fs: 30, scale: 0.011, border: '#f0c34a', fg: '#fff3c5' });
     dumpLabel.position.set(ax - 3, 8.8, az + 9.5); g.add(dumpLabel);
 
-    // Bucket elevator and distributor tower.
+    // Bucket elevator and distributor tower are a serviceable multi-floor headhouse.
     const ex = ax + 24, ez = az + 3;
-    g.add(box(11, 34, 11, M.wallWhite, ex, 17, ez));
-    g.add(box(12.2, 1.1, 12.2, M.roofBlue, ex, 34.55, ez));
-    g.add(box(8.2, 5.2, 8.2, M.wallGreen, ex, 37.7, ez));
-    g.add(box(9.0, 0.45, 9.0, M.roofBlue, ex, 40.5, ez));
-    for (const y of [6, 14, 22, 30]) {
-      g.add(box(11.3, 0.22, 0.25, M.steelDk, ex, y, ez - 5.6));
-      g.add(box(0.25, 0.22, 11.3, M.steelDk, ex - 5.6, y, ez));
-    }
+    processTower(g, { x: ex, z: ez, w: 11, d: 11, h: 40, wall: M.wallWhite, floors: 6 });
     addCollider(ex, ez, 11.5, 11.5);
     world.ambientVents.push(new THREE.Vector3(ex + 2, 35.5, ez));
-    for (const y of [7, 15, 23, 31]) louverBank(g, ex, y, ez - 5.58, 6.2, 1.4, 0, M.steelDk);
-    ladder(g, ex + 5.62, ez, 39.5, 0.2, Math.PI / 2, true);
     catwalk(g, ex, ez - 6.2, 13.0, 1.05, 31.0);
-    roofVent(g, ex - 2, 40.75, ez, 1.0);
-    roofVent(g, ex + 2, 40.75, ez, 1.0);
 
     // Six storage silos with roof vents and transfer headers.
     const siloPositions = [];
@@ -1145,10 +1515,8 @@ export function buildWorld(scene) {
 
     const spur = new THREE.Mesh(new THREE.PlaneGeometry(10, 54), M.asphalt);
     spur.rotation.x = -Math.PI / 2; spur.position.set(-102, 0.012, 143); g.add(spur);
-    truckUnit(g, ax - 9, az + 32, 0, M.wallWhite);
-    truckUnit(g, ax + 3, az + 32, 0, M.tankTan);
     // Scale house and probe station establish a believable inbound workflow.
-    g.add(box(6.5, 3.4, 4.2, M.wallGreen, ax + 19, 1.7, az + 29));
+    preEngineeredBuilding(g, { x: ax + 19, z: az + 29, w: 6.5, d: 4.2, eave: 3.2, rise: 0.9, wall: M.wallGreen, bay: 2.2, vents: false });
     g.add(box(5.2, 1.3, 0.08, M.glass, ax + 19, 2.1, az + 26.86));
     g.add(box(15, 0.14, 3.3, M.steelDk, ax - 3, 0.1, az + 37));
     g.add(cyl(0.09, 0.12, 5.5, M.steelDk, ax + 9, 2.75, az + 33));
@@ -1160,21 +1528,12 @@ export function buildWorld(scene) {
     const ax = -20, az = 82;
     pad(ax, az, 35, 30);
     mapRect(ax, az, 35, 30, 'MAINTENANCE', '#4f7180');
-    g.add(box(34, 8, 25, M.wallBlue, ax, 4, az));
-    g.add(box(35, 0.45, 26, M.roofBlue, ax, 8.25, az));
-    for (let i = 0; i < 4; i++) {
-      const x = ax - 12 + i * 8;
-      g.add(box(6.2, 5.5, 0.18, M.steelDk, x, 2.75, az - 12.62));
-      for (let y = 0; y < 5; y++) g.add(box(5.9, 0.08, 0.04, M.steel, x, 0.6 + y * 1.05, az - 12.76));
-    }
-    g.add(box(34, 0.28, 4.2, M.roofBlue, ax, 6.4, az - 14.4));
-    for (const x of [ax - 13.5, ax + 13.5]) g.add(box(0.3, 6.2, 0.3, M.steelDk, x, 3.1, az - 15.8));
-    for (const x of [ax - 10, ax, ax + 10]) roofVent(g, x, 8.55, az + 3, 1.0);
+    preEngineeredBuilding(g, { x: ax, z: az, w: 34, d: 25, eave: 7.8, rise: 3.3, wall: M.wallBlue, bay: 8.5, doorBays: [0, 1, 2, 3] });
     louverBank(g, ax - 17.12, 5.1, az + 4, 8, 2.2, Math.PI / 2, M.steelDk);
     addCollider(ax, az, 34, 25);
     const shopLabel = makeLabel('MAINTENANCE / INSTRUMENT SHOP', { fs: 34, scale: 0.012, border: '#ffffff', fg: '#ffffff' });
     shopLabel.position.set(ax, 9.4, az - 12.8); g.add(shopLabel);
-    g.add(box(8, 3.8, 5, M.wallWhite, ax + 12, 1.9, az + 16));
+    preEngineeredBuilding(g, { x: ax + 12, z: az + 16, w: 8, d: 5, eave: 3.6, rise: 1.1, wall: M.wallWhite, bay: 2.7, vents: false });
     g.add(box(6.6, 2.3, 0.12, M.glassDk, ax + 12, 2.1, az + 13.42));
     const mccLabel = makeLabel('MCC-01 / CONTROL POWER', { fs: 26, scale: 0.01, border: '#ffdf58' });
     mccLabel.position.set(ax + 12, 4.7, az + 13.2); g.add(mccLabel);
@@ -1194,24 +1553,10 @@ export function buildWorld(scene) {
     const ax = 70, az = 88;
     pad(ax, az, 76, 48);
     mapRect(ax, az, 76, 48, 'PACKAGING / SHIPPING', '#6d586d');
-    g.add(box(70, 12, 34, M.wallWhite, ax, 6, az));
-    g.add(box(71.5, 0.55, 35.5, M.roofBlue, ax, 12.3, az));
-    for (let x = ax - 28; x <= ax + 28; x += 14) {
-      g.add(box(10, 5.2, 0.22, M.steelDk, x, 2.6, az - 17.1));
-      g.add(box(8.8, 4.2, 0.1, M.glassDk, x, 2.4, az - 17.24));
-      g.add(box(10.8, 0.5, 2.2, M.concrete, x, 0.25, az - 19));
-      g.add(box(9.4, 0.36, 3.2, M.roofBlue, x, 6.1, az - 18.5));
-      for (const side of [-1, 1]) g.add(box(0.32, 0.75, 0.28, M.glassDk, x + side * 4.55, 0.72, az - 17.25));
-    }
-    for (let x = ax - 27; x <= ax + 27; x += 13.5) g.add(box(8, 1.5, 0.08, M.glass, x, 9.1, az - 17.2));
+    preEngineeredBuilding(g, { x: ax, z: az, w: 70, d: 34, eave: 11.5, rise: 4.8, wall: M.wallWhite, bay: 10, doorBays: [0, 1, 2, 3, 4, 5] });
     addCollider(ax, az, 70, 34);
     const warehouseLabel = makeLabel('PACKAGING + FINISHED GOODS', { fs: 42, scale: 0.014, border: '#ffffff', fg: '#ffffff' });
-    warehouseLabel.position.set(ax, 13.8, az - 17.6); g.add(warehouseLabel);
-    for (let x = ax - 28; x <= ax + 28; x += 9.5) roofVent(g, x, 12.65, az + 3, 1.15);
-    for (const x of [ax - 26, ax - 13, ax, ax + 13, ax + 26]) {
-      g.add(box(7.5, 0.12, 2.6, M.glass, x, 12.62, az - 3));
-    }
-    for (let i = 0; i < 4; i++) truckUnit(g, ax - 22 + i * 14, az - 28, Math.PI, i % 2 ? M.wallWhite : M.tankTan);
+    warehouseLabel.position.set(ax, 13.2, az - 17.6); g.add(warehouseLabel);
 
     // Product gallery from Meal to packaging.
     conveyorGallery(g, -35, 42, 20, 64, 13);
@@ -1228,7 +1573,7 @@ export function buildWorld(scene) {
     // Dedicated fire-water tank and pump house for the warehouse sprinkler system.
     g.add(cyl(4.2, 4.2, 8, M.safetyRed, ax + 43, 4, az + 6, 28));
     tankDetails(g, ax + 43, az + 6, 4.2, 8, { bandSpacing: 2.2, railing: false });
-    g.add(box(9, 4.2, 6, M.wallGreen, ax + 44, 2.1, az - 5));
+    preEngineeredBuilding(g, { x: ax + 44, z: az - 5, w: 9, d: 6, eave: 4, rise: 1.4, wall: M.wallGreen, bay: 3, vents: false });
     pipeRun(g, [[ax + 43, 0.8, az + 1.8], [ax + 43, 0.8, az - 5], [ax + 39, 0.8, az - 5]], 0.22, M.safetyRed);
   }
 
@@ -1283,18 +1628,125 @@ export function buildWorld(scene) {
     mapRect(120, 150, 58, 40, 'EMPLOYEE PARKING', '#56636b');
     for (let x = 96; x <= 143; x += 5.5) {
       g.add(box(0.12, 0.015, 16, M.lineWhite, x, 0.03, 150));
-      if (Math.round(x) % 2 === 0) {
-        g.add(box(2.1, 0.72, 4.4, M.wallBlue, x + 2.5, 0.58, 146));
-        g.add(box(1.75, 0.62, 2.0, M.glass, x + 2.5, 1.12, 146));
-        for (const wz of [144.5, 147.5]) for (const wx of [x + 1.55, x + 3.45]) {
-          const wheel = cyl(0.34, 0.34, 0.22, M.glassDk, wx, 0.38, wz, 12); wheel.rotation.z = Math.PI / 2; g.add(wheel);
-        }
-      }
     }
     // Windsock gives the solvent area a visible safety-oriented scale cue.
     g.add(cyl(0.08, 0.12, 11, M.steelDk, 103, 5.5, 111));
     const sock = new THREE.Mesh(new THREE.ConeGeometry(0.55, 3.2, 12, 1, true), M.safetyRed);
     sock.rotation.z = -Math.PI / 2; sock.position.set(104.5, 10.7, 111); g.add(sock);
+  }
+
+  // ======================= INTEGRATED CAMPUS LANDMARKS =======================
+  // This exterior master plan turns the individual training areas into one
+  // believable agricultural-processing campus. The layout is intentionally
+  // generic and carries no third-party logos or trade dress.
+  {
+    // Heavy-vehicle loop around the main bulk-storage court.
+    const loop = [
+      [96, -166], [164, -166], [174, -156], [174, -104],
+      [164, -94], [104, -94], [94, -104], [94, -156], [96, -166],
+    ];
+    for (let i = 0; i < loop.length - 1; i++) roadSegment(g, ...loop[i], ...loop[i + 1], 8.5);
+    roadSegment(g, 8, -166, 96, -166, 9.5);
+    roadSegment(g, 174, -104, 174, 28, 8.5);
+    for (const [x1, z1, x2, z2] of [[100, -162, 160, -162], [170, -151, 170, -109], [160, -98, 108, -98]]) {
+      roadSegment(g, x1, z1, x2, z2, 0.16, 0.041);
+    }
+
+    // Two landmark bulk silos dominate the campus frontage like a real oilseed plant.
+    const bulkSilos = [[119, -132, 'SILO 701'], [151, -132, 'SILO 702']];
+    pad(135, -132, 76, 62);
+    mapRect(135, -132, 76, 62, 'BULK STORAGE', '#8f928f');
+    for (const [sx, sz, id] of bulkSilos) {
+      g.add(cyl(14, 14, 20.5, M.concrete, sx, 10.25, sz, 48));
+      g.add(cyl(0.65, 14.1, 4.2, M.roof, sx, 22.6, sz, 48));
+      g.add(cyl(0.48, 0.6, 2.0, M.steelDk, sx, 25.7, sz, 14));
+      g.add(cyl(15, 15, 0.55, M.concrete, sx, 0.27, sz, 48));
+      tankDetails(g, sx, sz, 14, 20.5, { bandSpacing: 4.1 });
+      weatherSilo(g, sx, sz, 14, 20.5);
+      const siloLabel = makeLabel(id, { fs: 34, scale: 0.013, border: '#747a79', fg: '#eef1ed', bg: 'rgba(41,49,48,.9)' });
+      siloLabel.position.set(sx, 10.5, sz - 14.15); g.add(siloLabel);
+      addCollider(sx, sz, 29, 29);
+    }
+    catwalk(g, 135, -132, 32, 1.25, 25.2);
+    conveyorGallery(g, 119, -118, 113, -86, 24.5);
+
+    // Working bins and transfer galleries form the dense process silhouette behind the big silos.
+    const dayBins = [105, 118, 131, 144, 157];
+    for (const sx of dayBins) {
+      g.add(cyl(5.3, 5.3, 18, M.tankWhite, sx, 9, -80, 30));
+      g.add(cyl(0.35, 5.35, 2.8, M.roof, sx, 19.4, -80, 30));
+      g.add(cyl(0.35, 0.45, 1.4, M.steelDk, sx, 21.4, -80, 12));
+      addCollider(sx, -80, 11, 11);
+    }
+    tankDetails(g, dayBins[0], -80, 5.3, 18, { bandSpacing: 3.0 });
+    tankDetails(g, dayBins.at(-1), -80, 5.3, 18, { bandSpacing: 3.0 });
+    conveyorGallery(g, 105, -80, 157, -80, 22.5);
+
+    // Primary mill / headhouse: framed preparation tower, concrete grain leg, and press hall.
+    pad(133, -48, 75, 48);
+    mapRect(133, -48, 75, 48, 'PRIMARY MILL', '#596970');
+    processTower(g, { x: 119, z: -48, w: 27, d: 28, h: 34, wall: M.wallWhite, floors: 5 });
+    processTower(g, { x: 140, z: -50, w: 13, d: 14, h: 46, wall: M.wallGreen, floors: 7 });
+    preEngineeredBuilding(g, { x: 158, z: -44, w: 20, d: 24, eave: 13, rise: 4, wall: M.wallTan, bay: 5, doorBays: [1, 2] });
+    structuralFrame(g, 132, -64, 17, 6, 25, [6, 12, 18, 24]);
+    dustCollector(g, 151, -66, Math.PI / 2, 0.95);
+    cyclone(g, 163, -64, 15, 1.05);
+    g.add(cyl(1.35, 1.65, 42, M.steelDk, 148, 21, -34, 24));
+    g.add(cyl(1.55, 1.35, 1.8, M.rust, 148, 42.9, -34, 24));
+    catwalk(g, 129.5, -62.5, 22, 1.2, 27.5);
+    conveyorGallery(g, 140, -57, 145, -80, 25.5);
+    pipeRun(g, [[99, -0.2, -22], [99, 7.5, -22], [105, 7.5, -35], [105, 7.5, -48]], 0.28, M.pipe);
+    pipeRun(g, [[99.8, -0.2, -20], [99.8, 6.6, -20], [107, 6.6, -33], [107, 6.6, -48]], 0.17, M.pipeYel);
+    addCollider(119, -48, 27, 28);
+    addCollider(140, -50, 13, 14);
+    addCollider(157, -44, 20, 24);
+    const millLabel = makeLabel('PRIMARY MILL / BULK TRANSFER', { fs: 38, scale: 0.012, border: '#ffffff', fg: '#ffffff', bg: 'rgba(32,45,48,.94)' });
+    millLabel.position.set(119, 27, -62.2); g.add(millLabel);
+
+    // East-side rail main and loadout duplicate the reference campus boundary condition.
+    for (let z = -176; z <= 176; z += 2.4) g.add(box(5.2, 0.12, 0.3, M.rust, 183, 0.08, z));
+    g.add(box(0.17, 0.18, 354, M.steelDk, 181.65, 0.17, 0));
+    g.add(box(0.17, 0.18, 354, M.steelDk, 184.35, 0.17, 0));
+    for (const z of [-72, -51, -30]) {
+      g.add(bevelBox(3.2, 3.7, 17, M.tankWhite, 183, 2.7, z, 0, 0.32));
+      for (const hz of [z - 4.8, z, z + 4.8]) g.add(cyl(0.24, 1.18, 1.5, M.tankWhite, 183, 0.95, hz, 16));
+      for (const hz of [z - 5.2, z, z + 5.2]) g.add(cyl(0.5, 0.5, 0.22, M.steelDk, 183, 4.55, hz, 16));
+      for (const wz of [z - 6, z + 6]) for (const wx of [181.7, 184.3]) {
+        const wheel = cyl(0.44, 0.44, 0.25, M.glassDk, wx, 0.54, wz, 12);
+        wheel.rotation.z = Math.PI / 2; g.add(wheel);
+      }
+      ladder(g, 181.35, z + 6.5, 3.9, 0.5, -Math.PI / 2);
+    }
+    g.add(box(12, 0.4, 30, M.roofBlue, 176, 9.2, -64));
+    for (const x of [170.5, 181.5]) for (const z of [-77.5, -50.5]) g.add(box(0.35, 9.2, 0.35, M.steelDk, x, 4.6, z));
+    conveyorGallery(g, 157, -80, 176, -67, 13.5);
+    g.add(cyl(0.38, 0.7, 6.2, M.steelDk, 176, 8.5, -64, 14));
+
+    // Northern high-bay warehouse and southern distribution hall use real portal-frame construction.
+    pad(-45, 150, 104, 42);
+    mapRect(-45, 150, 104, 42, 'MAIN WAREHOUSE', '#6b7376');
+    preEngineeredBuilding(g, { x: -45, z: 151, w: 98, d: 34, eave: 14.5, rise: 5.4, wall: M.wallWhite, bay: 7, doorBays: [1, 3, 5, 7, 9, 11] });
+    addCollider(-45, 151, 98, 34);
+    conveyorGallery(g, -81, 91, -81, 133, 19);
+    const northLabel = makeLabel('RAW MATERIAL / MAIN WAREHOUSE', { fs: 38, scale: 0.012, border: '#ffffff', fg: '#ffffff' });
+    northLabel.position.set(-45, 17.2, 133.6); g.add(northLabel);
+
+    pad(-120, -137, 74, 40);
+    mapRect(-120, -137, 74, 40, 'DISTRIBUTION', '#66727a');
+    preEngineeredBuilding(g, { x: -120, z: -137, w: 70, d: 34, eave: 10.5, rise: 4.4, wall: M.wallBlue, bay: 7, doorBays: [1, 3, 5, 7] });
+    addCollider(-120, -137, 70, 34);
+    roadSegment(g, -82, -166, -82, -102, 9);
+    roadSegment(g, -82, -102, -18, -102, 9);
+
+    // Administration uses a real modular masonry and steel facade asset.
+    pad(36, -149, 52, 34);
+    world.architectureReady = loadBrickFactoryOffice(g, 36, -149);
+    addCollider(36, -149, 40, 19);
+    const adminLabel = makeLabel('PRAIRIE GOLD PROCESSING / PLANT 7', { fs: 36, scale: 0.011, border: '#d5ac3c', fg: '#fff2bf', bg: 'rgba(31,54,45,.96)' });
+    adminLabel.position.set(36, 7.8, -158.8); g.add(adminLabel);
+    const visitorParking = new THREE.Mesh(new THREE.PlaneGeometry(38, 22), M.asphalt);
+    visitorParking.rotation.x = -Math.PI / 2; visitorParking.position.set(67, 0.014, -149); g.add(visitorParking);
+    for (let z = -157; z <= -141; z += 4) g.add(box(36, 0.014, 0.12, M.lineWhite, 67, 0.032, z));
   }
 
   // ======================= pipe racks between areas =======================
@@ -1341,20 +1793,6 @@ export function buildWorld(scene) {
     g.add(box(1.5, 0.06, 1.5, M.lineYel, x, 0.035, z));
   }
 
-  // parked forklift for flavor
-  {
-    const f = new THREE.Group();
-    f.add(box(1.4, 0.9, 2.2, M.yellow, 0, 0.7, 0));
-    f.add(box(1.2, 0.9, 1.0, M.glassDk, 0, 1.6, 0.3));
-    f.add(box(0.12, 2.4, 0.5, M.steelDk, -0.4, 1.2, -1.35));
-    f.add(box(0.12, 2.4, 0.5, M.steelDk, 0.4, 1.2, -1.35));
-    f.add(box(0.5, 0.08, 1.1, M.steel, -0.4, 0.12, -1.95));
-    f.add(box(0.5, 0.08, 1.1, M.steel, 0.4, 0.12, -1.95));
-    f.position.set(14, 0, 8); f.rotation.y = 0.7;
-    g.add(f);
-    addCollider(14, 8, 2.5, 3);
-  }
-
   // Ground-level navigation points are separate from visual/effect anchors,
   // which may sit high on vessels or inside machinery.
   Object.assign(world.navAnchors, {
@@ -1395,6 +1833,10 @@ export function buildWorld(scene) {
     ring.rotation.z += dt * 1.6;
     arrow.position.y = 2.5 + Math.sin(performance.now() / 260) * 0.18;
   };
+
+  world.staticBatchCount = mergeStaticWorldGeometry(g, [
+    world.ctFan1, world.ctFan2, ...world.cv101Boxes,
+  ]);
 
   return world;
 }
